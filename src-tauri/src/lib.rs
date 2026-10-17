@@ -20,8 +20,17 @@ struct Snapshot {
     battery: Option<BatteryStatus>,
     /// Input reports received per second over the last second.
     report_rate: u32,
-    /// Report ids seen that the parser does not decode yet.
-    unknown_reports: Vec<u8>,
+    /// Bytes of the latest state report, report id first.
+    raw: Vec<u8>,
+    /// Report ids the parser does not decode yet, with their latest bytes.
+    unknown_reports: Vec<UnknownReport>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct UnknownReport {
+    id: u8,
+    count: u64,
+    data: Vec<u8>,
 }
 
 fn forward_events(app: AppHandle) {
@@ -38,6 +47,7 @@ fn forward_events(app: AppHandle) {
                 Some(Report::State(s)) => {
                     snap.slot = Some(slot);
                     snap.state = Some(s);
+                    snap.raw = data;
                     rate_count += 1;
                 }
                 Some(Report::Battery(b)) => snap.battery = Some(b),
@@ -45,7 +55,13 @@ fn forward_events(app: AppHandle) {
                     snap.slot = None;
                     snap.state = None;
                 }
-                Some(Report::Other(id)) if !snap.unknown_reports.contains(&id) => snap.unknown_reports.push(id),
+                Some(Report::Other(id)) => match snap.unknown_reports.iter_mut().find(|u| u.id == id) {
+                    Some(u) => {
+                        u.count += 1;
+                        u.data = data;
+                    }
+                    None => snap.unknown_reports.push(UnknownReport { id, count: 1, data }),
+                },
                 _ => {}
             },
             Ok(HubEvent::Closed { slot, .. }) if snap.slot.as_deref() == Some(slot.as_str()) => {

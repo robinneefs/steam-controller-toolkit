@@ -38,7 +38,17 @@ export interface Snapshot {
   state: ControllerState | null;
   battery: { charge_state: number; level: number } | null;
   report_rate: number;
-  unknown_reports: number[];
+  /** Bytes of the latest state report, report id first. */
+  raw: number[];
+  /** Report ids the parser does not decode yet, with their latest bytes. */
+  unknown_reports: { id: number; count: number; data: number[] }[];
+}
+
+/** EChargeState from SDL's controller_structs.h. */
+export const CHARGE_STATES = ["reset", "on battery", "charging", "validating source", "fully charged"];
+
+export function hex(bytes: number[]): string {
+  return bytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
 }
 
 export const Buttons = {

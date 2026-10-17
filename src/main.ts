@@ -42,9 +42,6 @@ function renderStatus(snap: Snapshot): void {
   }
   const parts = [`Connected · ${snap.slot}`, `${snap.report_rate} Hz`];
   if (snap.battery) parts.push(`battery ${snap.battery.level}%`);
-  if (snap.unknown_reports.length) {
-    parts.push(`unknown reports: ${snap.unknown_reports.map((id) => "0x" + id.toString(16)).join(", ")}`);
-  }
   status.textContent = parts.join(" · ");
   status.className = "status connected";
 }
