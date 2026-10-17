@@ -125,7 +125,8 @@ export class VisualizerTab implements Tab {
         series: [{ name: "L", color: "--series-1" }, { name: "R", color: "--series-2" }],
       }),
       pressure: new LiveGraph(g("pressure"), {
-        title: "Pad pressure", unit: "raw", minSpan: 1000, positive: true,
+        // The full u16 range, square-root scaled so light touches still show.
+        title: "Pad pressure", unit: "raw", range: [0, 65535], scale: "sqrt", ticks: [1000, 10000],
         series: [{ name: "L", color: "--series-1" }, { name: "R", color: "--series-2" }],
       }),
     };

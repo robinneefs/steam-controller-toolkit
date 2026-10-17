@@ -10,12 +10,11 @@ export interface GraphOptions {
   title: string;
   unit: string;
   series: Series[];
-  /** Fixed y range. Omit for a symmetric range that grows to fit the data. */
-  range?: [number, number];
-  /** Smallest half-range for auto ranges. */
-  minSpan?: number;
-  /** Auto range starts at zero instead of being symmetric (for non-negative data). */
-  positive?: boolean;
+  /**
+   * Fixed y range. Deliberately never automatic: rescaling would redraw the data already shown,
+   * so the past would appear to change whenever a bigger value arrived.
+   */
+  range: [number, number];
   decimals?: number;
   /**
    * "sqrt" compresses large values (signed square root) so a fixed full-scale range still shows
@@ -34,7 +33,6 @@ export class LiveGraph {
   private head = 0;
   private filled = 0;
   private hoverX: number | null = null;
-  private span: number;
 
   constructor(container: HTMLElement, private opts: GraphOptions) {
     container.classList.add("graph");
@@ -47,7 +45,6 @@ export class LiveGraph {
     this.canvas = container.querySelector("canvas")!;
     this.values = opts.series.map((_, i) => container.querySelector<HTMLElement>(`[data-v="${i}"]`)!);
     this.data = opts.series.map(() => new Float32Array(SAMPLES));
-    this.span = opts.minSpan ?? 1;
 
     this.canvas.addEventListener("mousemove", (e) => {
       this.hoverX = e.offsetX;
@@ -72,18 +69,6 @@ export class LiveGraph {
     return this.data[series][(this.head - 1 - back + SAMPLES * 2) % SAMPLES];
   }
 
-  private yRange(): [number, number] {
-    if (this.opts.range) return this.opts.range;
-    let peak = 0;
-    for (let s = 0; s < this.data.length; s++) {
-      for (let i = 0; i < this.filled; i++) peak = Math.max(peak, Math.abs(this.at(s, i)));
-    }
-    // Grow immediately, shrink slowly so the scale doesn't jump around.
-    const target = Math.max(this.opts.minSpan ?? 1, niceCeil(peak));
-    this.span = target > this.span ? target : this.span + (target - this.span) * 0.02;
-    return this.opts.positive ? [0, this.span] : [-this.span, this.span];
-  }
-
   private draw(): void {
     const c = this.canvas;
     const dpr = window.devicePixelRatio || 1;
@@ -99,7 +84,7 @@ export class LiveGraph {
     ctx.clearRect(0, 0, w, h);
 
     const css = getComputedStyle(c);
-    const [lo, hi] = this.yRange();
+    const [lo, hi] = this.opts.range;
     const curve = this.opts.scale === "sqrt" ? (v: number) => Math.sign(v) * Math.sqrt(Math.abs(v)) : (v: number) => v;
     const [cLo, cHi] = [curve(lo), curve(hi)];
     const y = (v: number) => h - 2 - ((curve(v) - cLo) / (cHi - cLo)) * (h - 4);
@@ -165,13 +150,6 @@ export class LiveGraph {
     const d = this.opts.decimals ?? 0;
     this.values.forEach((el, i) => (el.textContent = this.filled ? fmt(this.at(i, back), d) : "–"));
   }
-}
-
-function niceCeil(v: number): number {
-  if (v <= 0) return 0;
-  const p = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * p) return m * p;
-  return 10 * p;
 }
 
 function fmt(v: number, decimals: number): string {
