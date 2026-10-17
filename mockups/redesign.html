@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UI redesign mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #08090b; color: #cfd5dd; font: 13px "Inter Tight", system-ui, sans-serif; }
+  .picker { position: sticky; top: 0; z-index: 10; display: flex; gap: 6px; align-items: center; padding: 10px 24px; background: #08090bee; border-bottom: 1px solid #1c1f25; }
+  .picker b { margin-right: 12px; font-weight: 600; color: #fff; }
+  .picker a { color: #8a93a0; text-decoration: none; padding: 6px 12px; border-radius: 8px; border: 1px solid #1f232a; }
+  .picker a:hover { color: #fff; border-color: #3a414c; }
+  section.mock { padding: 28px 24px 40px; }
+  .mock-head { display: flex; align-items: baseline; gap: 14px; margin: 0 auto 14px; max-width: 1320px; }
+  .mock-head h2 { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
+  .mock-head p { margin: 0; color: #7d8794; }
+  .window { position: relative; max-width: 1320px; height: 780px; margin: 0 auto; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px #000a, 0 0 0 1px #ffffff12; }
+  svg text { font-family: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ================= A: Graphite ================= */
+  .A { --bg:#0b0d11; --s1:#12151b; --s2:#181c23; --line:#232832; --tx:#e6ebf1; --mu:#7b8594; --ac:#5ad1ff; --ac2:#ff8a4c; --ok:#58d89b;
+       display: grid; grid-template-columns: 64px 1fr; background: var(--bg); color: var(--tx); font-family: "Inter Tight", sans-serif; }
+  .A .rail { background: #090b0e; border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 6px; }
+  .A .rail .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #5ad1ff, #3d7bff); display: grid; place-items: center; margin-bottom: 14px; color: #04121c; font-weight: 700; }
+  .A .rail button { width: 42px; height: 42px; border-radius: 11px; border: 0; background: none; color: var(--mu); display: grid; place-items: center; cursor: pointer; position: relative; }
+  .A .rail button.on { background: #5ad1ff14; color: var(--ac); }
+  .A .rail button.on::before { content: ""; position: absolute; left: -11px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ac); }
+  .A .rail .spacer { flex: 1; }
+  .A .main { display: grid; grid-template-rows: 64px 1fr; min-width: 0; }
+  .A header { display: flex; align-items: center; gap: 16px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .A header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .A header .crumb { color: var(--mu); }
+  .A .device { margin-left: auto; display: flex; align-items: center; gap: 12px; padding: 7px 14px 7px 10px; border-radius: 999px; background: var(--s1); border: 1px solid var(--line); }
+  .A .device .led { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px #58d89b22; }
+  .A .device .sep { width: 1px; height: 14px; background: var(--line); }
+  .A .device span { color: var(--mu); } .A .device strong { font-weight: 500; color: var(--tx); }
+  .A .body { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; padding: 16px 22px 18px; min-height: 0; }
+  .A .card { background: var(--s1); border: 1px solid var(--line); border-radius: 16px; min-height: 0; position: relative; overflow: hidden; }
+  .A .card-h { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; font-size: 12px; color: var(--mu); }
+  .A .card-h b { color: var(--tx); font-weight: 600; font-size: 13px; }
+  .A .stage { background: radial-gradient(120% 90% at 50% 40%, #1a2230 0%, #10131a 55%, #0c0e13 100%); }
+  .A .stage .floor { position: absolute; inset: auto 0 0 0; height: 46%; background:
+       repeating-linear-gradient(90deg, #5ad1ff0c 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, #5ad1ff0c 0 1px, transparent 1px 48px);
+       transform: perspective(500px) rotateX(62deg); transform-origin: bottom; mask-image: linear-gradient(to top, #000 10%, transparent); }
+  .A .hud { position: absolute; display: flex; gap: 8px; }
+  .A .hud .pill { background: #0b0d11cc; border: 1px solid #ffffff12; backdrop-filter: blur(8px); padding: 7px 11px; border-radius: 10px; font: 500 12px "JetBrains Mono", monospace; }
+  .A .hud .pill i { font-style: normal; color: var(--mu); margin-right: 6px; }
+  .A .btn { font: 500 12px "Inter Tight"; color: var(--tx); background: #ffffff0d; border: 1px solid #ffffff14; padding: 7px 12px; border-radius: 9px; }
+  .A .credit { position: absolute; left: 16px; bottom: 12px; font-size: 11px; color: #5d6674; }
+  .A .sensors { display: grid; grid-template-rows: auto repeat(4, 1fr); }
+  .A .sensor { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 12px; padding: 0 16px; border-top: 1px solid var(--line); }
+  .A .sensor:first-of-type { border-top: 0; }
+  .A .sensor .k { font-size: 12px; color: var(--mu); } .A .sensor .v { font: 500 20px "JetBrains Mono"; color: var(--tx); letter-spacing: -0.02em; }
+  .A .sensor .v small { font-size: 11px; color: var(--mu); margin-left: 3px; }
+  .A .sensor .dots { display: flex; gap: 8px; margin-top: 3px; font: 11px "JetBrains Mono"; color: var(--mu); }
+  .A .sensor svg { width: 100%; height: 64px; }
+  .A .inputs { grid-column: 1 / 2; display: grid; grid-template-columns: 1fr 230px; }
+  .A .inputs .schem { padding: 6px 10px 10px; display: grid; place-items: center; min-height: 0; }
+  .A .inputs .schem svg { width: 100%; height: 100%; max-height: 270px; }
+  .A .inputs .side { border-left: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .A .bar { display: grid; grid-template-columns: 22px 1fr 40px; align-items: center; gap: 10px; font: 12px "JetBrains Mono"; color: var(--mu); }
+  .A .bar .t { height: 6px; border-radius: 3px; background: #ffffff0d; overflow: hidden; } .A .bar .t i { display: block; height: 100%; background: linear-gradient(90deg, #3d7bff, var(--ac)); border-radius: 3px; }
+  .A .bar b { color: var(--tx); font-weight: 500; text-align: right; }
+  .A .touch { display: flex; flex-wrap: wrap; gap: 6px; }
+  .A .touch span { font-size: 11px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--mu); }
+  .A .touch span.on { color: var(--ok); border-color: #58d89b55; background: #58d89b12; }
+  .A .raw { grid-column: 2; }
+  .A .raw pre { margin: 0; padding: 10px 16px 16px; font: 12px/1.6 "JetBrains Mono"; color: #aab3bf; }
+  .A .raw pre .o { color: #475060; } .A .raw pre mark { background: #ff8a4c22; color: var(--ac2); border-radius: 3px; }
+  .A .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 12px 16px 0; background: var(--line); border-radius: 10px; overflow: hidden; }
+  .A .facts div { background: var(--s2); padding: 8px 10px; } .A .facts span { display: block; font-size: 11px; color: var(--mu); } .A .facts b { font: 500 12px "JetBrains Mono"; }
+
+  /* ================= B: Big Picture ================= */
+  .B { --tx:#eef3f8; --mu:#8ea0b4; --ac:#1a9fff; --ac2:#66c0f4; --warm:#ffb547; --card:#ffffff08; --line:#ffffff12;
+       background: radial-gradient(90% 70% at 30% 0%, #1f3550 0%, transparent 60%), radial-gradient(70% 60% at 100% 100%, #2a1f45 0%, transparent 60%), #0f1622;
+       color: var(--tx); font-family: "Barlow", sans-serif; display: grid; grid-template-rows: 76px 1fr 48px; grid-template-columns: minmax(0, 1fr); }
+  .B header { display: flex; align-items: center; gap: 28px; padding: 0 30px; }
+  .B .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; letter-spacing: 0.02em; }
+  .B .brand img { width: 40px; height: 40px; }
+  .B nav { display: flex; gap: 4px; padding: 5px; border-radius: 999px; background: #00000040; border: 1px solid var(--line); }
+  .B nav a { padding: 8px 18px; border-radius: 999px; color: var(--mu); font-weight: 600; font-size: 14px; text-decoration: none; }
+  .B nav a.on { background: var(--tx); color: #0f1622; }
+  .B .right { margin-left: auto; display: flex; align-items: center; gap: 18px; color: var(--mu); font-weight: 500; }
+  .B .batt { display: flex; align-items: center; gap: 8px; color: var(--tx); }
+  .B .batt .cell { width: 26px; height: 13px; border: 2px solid #eef3f8aa; border-radius: 4px; padding: 1px; position: relative; }
+  .B .batt .cell::after { content: ""; position: absolute; right: -5px; top: 3px; width: 2px; height: 5px; background: #eef3f8aa; border-radius: 0 2px 2px 0; }
+  .B .batt .cell i { display: block; height: 100%; width: 82%; background: #5fe39a; border-radius: 1px; }
+  .B .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 6px 30px 18px; min-height: 0; }
+  .B .hero { position: relative; border-radius: 24px; overflow: hidden; background: linear-gradient(160deg, #23364f 0%, #141f30 60%, #111a29 100%); border: 1px solid var(--line); }
+  .B .hero .glow { position: absolute; left: 50%; top: 56%; width: 70%; height: 30%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, #1a9fff40, transparent); filter: blur(10px); }
+  .B .hero .title { position: absolute; left: 28px; top: 24px; }
+  .B .hero .title small { display: block; color: var(--ac2); font-weight: 600; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .B .hero .title b { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+  .B .angles { position: absolute; left: 28px; bottom: 24px; display: flex; gap: 26px; }
+  .B .angles div span { display: block; font-size: 12px; color: var(--mu); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .B .angles div b { font-size: 34px; font-weight: 600; } .B .angles div b small { font-size: 18px; color: var(--mu); }
+  .B .hero .actions { position: absolute; right: 22px; bottom: 24px; display: flex; gap: 10px; }
+  .B .hero { cursor: grab; user-select: none; }
+  .B .hero svg[data-ctrl] { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+  .B .hero.free svg[data-ctrl] { transition: none; }
+  .B .lock { position: absolute; right: 22px; top: 26px; display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 10px; border-radius: 999px; background: #00000040; border: 1px solid var(--line); font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .B .lock .ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #ffffff14; color: var(--mu); }
+  .B .lock .rt { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 4px; border-radius: 7px; background: #ffffff14; color: var(--tx); font-size: 12px; }
+  .B .lock .rt i { width: 22px; height: 8px; border-radius: 3px; background: #ffffff22; overflow: hidden; display: block; }
+  .B .lock .rt i b { display: block; height: 100%; width: 0; background: var(--ac); transition: width .2s; }
+  .B .lock em { font-style: normal; color: var(--mu); font-weight: 500; }
+  .B .hero.free .lock { border-color: #1a9fff88; background: #1a9fff22; }
+  .B .hero.free .lock .ic { background: var(--ac); color: #fff; }
+  .B .hero.free .lock .rt i b { width: 100%; }
+  .B .pad-cluster { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; height: calc(100% - 26px); }
+  .B .side-c { display: flex; flex-direction: column-reverse; align-items: center; gap: 14px; }
+  .B .shoulders { display: grid; gap: 6px; justify-items: center; }
+  .B .cap { height: 26px; min-width: 40px; padding: 0 10px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: var(--mu); background: #ffffff08; border: 1px solid var(--line); transition: all .12s; }
+  .B .cap.bumper { border-radius: 13px 13px 6px 6px; min-width: 86px; }
+  .B .cap.grip { border-radius: 6px 6px 13px 13px; }
+  .B .on { color: #fff !important; background: var(--ac) !important; border-color: transparent !important; box-shadow: 0 0 0 3px #1a9fff33, 0 4px 16px #1a9fff66; }
+  .B .grips { display: flex; gap: 6px; }
+  .B .diamond { position: relative; width: 92px; height: 92px; }
+  .B .diamond > * { position: absolute; width: 30px; height: 30px; }
+  .B .diamond > :nth-child(1) { left: 31px; top: 0; } .B .diamond > :nth-child(2) { left: 0; top: 31px; }
+  .B .diamond > :nth-child(3) { right: 0; top: 31px; } .B .diamond > :nth-child(4) { left: 31px; bottom: 0; }
+  .B .face { border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: var(--mu); background: #ffffff08; border: 1px solid var(--line); }
+  .B .arm { background: #ffffff08; border: 1px solid var(--line); display: grid; place-items: center; color: var(--mu); }
+  .B .arm svg { width: 12px; height: 12px; }
+  .B .diamond .arm:nth-child(1) { border-radius: 7px 7px 3px 3px; } .B .diamond .arm:nth-child(4) { border-radius: 3px 3px 7px 7px; }
+  .B .diamond .arm:nth-child(2) { border-radius: 7px 3px 3px 7px; } .B .diamond .arm:nth-child(3) { border-radius: 3px 7px 7px 3px; }
+  .B .center-c { display: grid; justify-items: center; gap: 12px; }
+  .B .sys { display: flex; gap: 8px; align-items: center; }
+  .B .sys .cap { min-width: 0; width: 34px; height: 24px; padding: 0; border-radius: 12px; }
+  .B .sys .cap.steam { width: 34px; height: 34px; border-radius: 50%; }
+  .B .touchrow { display: flex; gap: 10px; color: var(--mu); font-size: 12px; font-weight: 600; }
+  .B .touchrow span { display: inline-flex; align-items: center; gap: 5px; }
+  .B .touchrow span::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ffffff22; }
+  .B .touchrow span.t { color: var(--tx); } .B .touchrow span.t::before { background: #5fe39a; box-shadow: 0 0 6px #5fe39a; }
+  .B .gbtn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; background: #ffffff14; border: 1px solid var(--line); font-weight: 600; color: var(--tx); font-size: 14px; }
+  .B .gbtn.primary { background: var(--ac); border-color: transparent; }
+  .B .glyph { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; background: #eef3f8; color: #0f1622; }
+  .B .credit { position: absolute; right: 24px; top: 26px; font-size: 12px; color: #8ea0b499; }
+  .B .col { display: grid; grid-template-rows: 0.95fr 0.8fr 1.25fr; gap: 16px; min-height: 0; }
+  .B .tile { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px 18px; min-height: 0; position: relative; backdrop-filter: blur(6px); }
+  .B .tile h3 { margin: 0 0 6px; font-size: 13px; color: var(--mu); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; display: flex; justify-content: space-between; }
+  .B .tile h3 em { font-style: normal; color: var(--ac2); letter-spacing: 0; text-transform: none; }
+  .B .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; height: calc(100% - 24px); align-items: center; justify-items: center; }
+  .B .row figure { margin: 0; display: grid; justify-items: center; gap: 6px; } .B figcaption { font-size: 12px; color: var(--mu); font-weight: 600; }
+  .B .keys { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+  .B .key { height: 36px; border-radius: 10px; background: #ffffff0a; border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; color: var(--mu); font-size: 13px; }
+  .B .key.on { background: var(--ac); color: #fff; border-color: transparent; box-shadow: 0 6px 18px #1a9fff55; }
+  .B .key.wide { grid-column: span 2; }
+  .B footer { display: flex; align-items: center; gap: 22px; padding: 0 30px; border-top: 1px solid var(--line); background: #00000030; color: var(--mu); font-weight: 600; font-size: 13px; }
+  .B footer .warn { display: flex; align-items: center; gap: 8px; color: var(--warm); }
+  .B footer .hints { margin-left: auto; display: flex; gap: 18px; }
+  .B footer .hints > span { display: flex; align-items: center; gap: 7px; color: var(--tx); }
+
+  /* ================= C: Lab bench ================= */
+  .C { --bg:#0a0b0a; --p:#0f110f; --line:#262a24; --tx:#d9e0d3; --mu:#6f786a; --amb:#ffb020; --grn:#7cf29a; --cy:#5fd4e8; --mag:#ff6b9a;
+       background: var(--bg); color: var(--tx); font-family: "IBM Plex Mono", monospace; font-size: 12px; display: grid; grid-template-rows: 34px 1fr 26px; }
+  .C .menubar { display: flex; align-items: center; border-bottom: 1px solid var(--line); background: #0d0f0d; }
+  .C .menubar .id { padding: 0 14px; height: 100%; display: flex; align-items: center; gap: 8px; background: var(--amb); color: #1a1200; font-weight: 600; letter-spacing: 0.04em; }
+  .C .menubar a { padding: 0 14px; height: 100%; display: flex; align-items: center; color: var(--mu); text-decoration: none; border-right: 1px solid var(--line); }
+  .C .menubar a.on { color: var(--amb); background: #ffb0200d; box-shadow: inset 0 -2px var(--amb); }
+  .C .menubar .rt { margin-left: auto; display: flex; gap: 18px; padding-right: 14px; color: var(--mu); }
+  .C .menubar .rt b { color: var(--grn); font-weight: 500; }
+  .C .bench { display: grid; grid-template-columns: 300px minmax(0, 1fr) 330px; gap: 1px; background: var(--line); min-height: 0; }
+  .C .col { background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+  .C .blk { position: relative; border-bottom: 1px solid var(--line); padding: 10px 12px; }
+  .C .blk:last-child { border-bottom: 0; }
+  .C .lbl { display: flex; justify-content: space-between; color: var(--mu); font-size: 11px; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .C .lbl b { color: var(--amb); font-weight: 500; }
+  .C .view { flex: 1; position: relative; background:
+      linear-gradient(#ffffff06 1px, transparent 1px) 0 0/40px 40px, linear-gradient(90deg, #ffffff06 1px, transparent 1px) 0 0/40px 40px, #090a09; }
+  .C .corner { position: absolute; width: 14px; height: 14px; border-color: var(--amb); border-style: solid; }
+  .C .ro { position: absolute; font-size: 11px; color: var(--mu); line-height: 1.6; }
+  .C .ro b { color: var(--tx); font-weight: 500; display: inline-block; min-width: 56px; text-align: right; }
+  .C .scope { display: grid; grid-template-rows: repeat(4, 1fr); flex: 1; min-height: 0; }
+  .C .ch { display: grid; grid-template-columns: 1fr 120px; border-bottom: 1px solid var(--line); min-height: 0; }
+  .C .ch:last-child { border-bottom: 0; }
+  .C .ch svg { width: 100%; height: 100%; display: block; }
+  .C .ch .meta { border-left: 1px solid var(--line); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--mu); }
+  .C .ch .meta .n { color: var(--tx); font-weight: 600; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .C .ch .meta span { display: flex; justify-content: space-between; } .C .ch .meta span b { font-weight: 500; }
+  .C .hex { margin: 0; font: 12px/1.65 "IBM Plex Mono"; color: #9aa596; }
+  .C .hex .o { color: #454c42; } .C .hex .h { color: var(--amb); }
+  .C .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; } .C .kv dt { color: var(--mu); } .C .kv dd { margin: 0; text-align: right; }
+  .C .leds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .C .led { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 1px solid var(--line); font-size: 11px; color: var(--mu); }
+  .C .led i { width: 7px; height: 7px; border-radius: 50%; background: #262a24; }
+  .C .led.on { color: var(--tx); border-color: #7cf29a55; } .C .led.on i { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
+  .C .xy { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .C .xy svg { width: 100%; aspect-ratio: 1; display: block; }
+  .C .status { display: flex; align-items: center; gap: 0; border-top: 1px solid var(--line); background: #0d0f0d; color: var(--mu); font-size: 11px; }
+  .C .status span { padding: 0 12px; border-right: 1px solid var(--line); height: 100%; display: flex; align-items: center; gap: 6px; }
+  .C .status .warn { color: #1a1200; background: var(--amb); }
+  .C .meterrow { display: grid; grid-template-columns: 26px 1fr 44px; gap: 8px; align-items: center; margin-top: 6px; }
+  .C .seg { display: flex; gap: 2px; height: 10px; } .C .seg i { flex: 1; background: #1b1e1a; } .C .seg i.on { background: var(--amb); }
+</style>
+</head>
+<body>
+<div class="picker">
+  <b>Steam Controller Toolkit · redesign mockups</b>
+  <a href="#a">A · Graphite</a><a href="#b">B · Big Picture</a><a href="#c">C · Lab bench</a>
+</div>
+
+<!-- ======================= A ======================= -->
+<section class="mock" id="a">
+  <div class="mock-head"><h2>A · Graphite</h2><p>Pro-tool feel (Linear / Figma / Blender-ish). Icon rail for tools, hero 3D stage, inputs shown on a controller schematic instead of a grid of boxes.</p></div>
+  <div class="window A">
+    <aside class="rail">
+      <div class="logo">SC</div>
+      <button class="on" title="Visualizer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6L2 15.5A2.6 2.6 0 0 0 6.6 17.4L9 15h6l2.4 2.4a2.6 2.6 0 0 0 4.6-1.9l-.7-6.9A4 4 0 0 0 17.3 5z"/></svg></button>
+      <button title="Haptics"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12h3l3-8 4 16 3-8h7"/></svg></button>
+      <button title="Remap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></button>
+      <button title="Calibrate"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+      <div class="spacer"></div>
+      <button title="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    </aside>
+    <div class="main">
+      <header>
+        <h1>Visualizer</h1><span class="crumb">Live input</span>
+        <div class="device">
+          <span class="led"></span><strong>Steam Controller</strong><span>Puck · slot 1</span>
+          <span class="sep"></span><span class="num"><strong>265</strong> Hz</span>
+          <span class="sep"></span><span class="num"><strong>82%</strong> charging</span>
+        </div>
+      </header>
+      <div class="body">
+        <div class="card stage">
+          <div class="floor"></div>
+          <div class="hud" style="left:16px;top:16px">
+            <div class="pill"><i>pitch</i>12°</div><div class="pill"><i>roll</i>-4°</div><div class="pill"><i>yaw</i>37°</div>
+          </div>
+          <div class="hud" style="right:16px;top:16px"><span class="btn">Re-center</span><span class="btn">Reset view</span></div>
+          <svg class="ctrl3d" viewBox="0 0 400 240" style="position:absolute;left:50%;top:52%;width:62%;transform:translate(-50%,-50%) perspective(900px) rotateX(28deg) rotateZ(-6deg)" data-ctrl="A3d"></svg>
+          <div class="credit">3D model: “Steam Machine + Controller” by dark_igorek · CC BY 4.0 · adapted</div>
+        </div>
+        <div class="card sensors" style="grid-row: 1 / 3; grid-column: 2">
+          <div class="card-h" style="padding-bottom:10px"><b>Sensors</b><span style="margin-left:auto">last 5 s</span></div>
+          <div class="sensor"><div><div class="k">Gyro</div><div class="v num">142<small>°/s</small></div><div class="dots"><span style="color:#5ad1ff">● p</span><span style="color:#ff8a4c">● r</span><span style="color:#b48cff">● y</span></div></div><svg data-spark="A0"></svg></div>
+          <div class="sensor"><div><div class="k">Accel</div><div class="v num">1.02<small>g</small></div><div class="dots"><span style="color:#5ad1ff">● x</span><span style="color:#ff8a4c">● y</span><span style="color:#b48cff">● z</span></div></div><svg data-spark="A1"></svg></div>
+          <div class="sensor"><div><div class="k">Triggers</div><div class="v num">64<small>%</small></div><div class="dots"><span style="color:#5ad1ff">● L</span><span style="color:#ff8a4c">● R</span></div></div><svg data-spark="A2"></svg></div>
+          <div class="sensor"><div><div class="k">Pad pressure</div><div class="v num">3.1k<small>raw</small></div><div class="dots"><span style="color:#5ad1ff">● L</span><span style="color:#ff8a4c">● R</span></div></div><svg data-spark="A3"></svg></div>
+        </div>
+        <div class="card inputs">
+          <div>
+            <div class="card-h"><b>Inputs</b><span>pressed parts light up</span></div>
+            <div class="schem"><svg viewBox="0 -14 400 254" data-ctrl="A"></svg></div>
+          </div>
+          <div class="side">
+            <div class="card-h" style="padding:0"><b>Analog</b></div>
+            <div class="bar"><span>LT</span><div class="t"><i style="width:28%"></i></div><b class="num">28%</b></div>
+            <div class="bar"><span>RT</span><div class="t"><i style="width:64%"></i></div><b class="num">64%</b></div>
+            <div class="bar"><span>LS</span><div class="t"><i style="width:41%"></i></div><b class="num">.41</b></div>
+            <div class="bar"><span>RS</span><div class="t"><i style="width:8%"></i></div><b class="num">.08</b></div>
+            <div class="card-h" style="padding:6px 0 0"><b>Touch</b></div>
+            <div class="touch"><span class="on">L grip</span><span class="on">R grip</span><span>L stick</span><span class="on">R stick</span><span>L pad</span><span class="on">R pad</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= B ======================= -->
+<section class="mock" id="b">
+  <div class="mock-head"><h2>B · Big Picture</h2><p>Leans into Steam's own console look: big type, pill navigation, glowing gauges, button-glyph hints. Feels like a first-party companion app.</p></div>
+  <div class="window B">
+    <header>
+      <div class="brand"><img src="data:image/png;base64,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" alt="" />CONTROLLER TOOLKIT</div>
+      <nav><a class="on">Visualizer</a><a>Haptics</a><a>Remap</a><a>Calibrate</a></nav>
+      <div class="right">
+        <span>Puck · slot 1</span><span class="num">265 Hz</span>
+        <span class="batt"><span class="cell"><i></i></span><span class="num">82%</span></span>
+      </div>
+    </header>
+    <div class="grid">
+      <div class="hero" data-hero>
+        <div class="glow"></div>
+        <div class="title"><small>Connected</small><b>Steam Controller</b></div>
+        <div class="lock">
+          <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" data-lock-icon><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+          <span data-lock-text>Front view locked</span>
+          <em>·</em>
+          <span><em>hold</em></span><span class="rt"><i><b></b></i>RT</span><span><em>to rotate</em></span>
+        </div>
+        <svg viewBox="0 0 400 240" style="position:absolute;left:50%;top:52%;width:70%;transform:translate(-50%,-50%)" data-ctrl="B3d" data-model></svg>
+        <div class="angles">
+          <div><span>Pitch</span><b class="num">12<small>°</small></b></div>
+          <div><span>Roll</span><b class="num">-4<small>°</small></b></div>
+          <div><span>Yaw</span><b class="num">37<small>°</small></b></div>
+        </div>
+        <div class="actions"><span class="gbtn">Re-center yaw</span></div>
+      </div>
+      <div class="col">
+        <div class="tile">
+          <h3>Analog <em>live</em></h3>
+          <div class="row">
+            <figure><svg width="92" height="92" data-ring="28"></svg><figcaption>Left trigger</figcaption></figure>
+            <figure><svg width="92" height="92" data-ring="0" data-rt-ring></svg><figcaption>Right trigger</figcaption></figure>
+            <figure><svg width="92" height="92" data-stick="0.3,-0.25"></svg><figcaption>Left stick</figcaption></figure>
+            <figure><svg width="92" height="92" data-stick="-0.05,0.08"></svg><figcaption>Right stick</figcaption></figure>
+          </div>
+        </div>
+        <div class="tile">
+          <h3>Motion <em>gyro °/s</em></h3>
+          <svg data-wave="B" style="width:100%;height:calc(100% - 24px)"></svg>
+        </div>
+        <div class="tile">
+          <h3>Buttons <em>4 held</em></h3>
+          <div class="pad-cluster">
+            <div class="side-c">
+              <div class="diamond">
+                <span class="arm on"><svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 2l4 6H2z"/></svg></span>
+                <span class="arm"><svg viewBox="0 0 12 12" fill="currentColor"><path d="M2 6l6-4v8z"/></svg></span>
+                <span class="arm"><svg viewBox="0 0 12 12" fill="currentColor"><path d="M10 6L4 2v8z"/></svg></span>
+                <span class="arm"><svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L2 4h8z"/></svg></span>
+              </div>
+              <div class="shoulders"><span class="cap bumper">L</span><div class="grips"><span class="cap grip">L4</span><span class="cap grip on">L5</span></div></div>
+            </div>
+            <div class="center-c">
+              <div class="sys">
+                <span class="cap" title="View"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="12" height="10" rx="2"/><rect x="9" y="9" width="12" height="10" rx="2"/></svg></span>
+                <span class="cap steam" title="Steam"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="15" cy="10" r="2.5"/><path d="M4.5 14.5l6 2.5"/></svg></span>
+                <span class="cap" title="Quick access">···</span>
+                <span class="cap" title="Menu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 7h14M5 12h14M5 17h14"/></svg></span>
+              </div>
+              <div class="touchrow"><span class="t">Grips</span><span>Sticks</span><span class="t">R pad</span></div>
+            </div>
+            <div class="side-c r">
+              <div class="diamond">
+                <span class="face">Y</span><span class="face">X</span><span class="face">B</span><span class="face on">A</span>
+              </div>
+              <div class="shoulders"><span class="cap bumper on">R</span><div class="grips"><span class="cap grip">R4</span><span class="cap grip">R5</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="warn">▲ Steam is running: Desktop Layout may move your mouse</span>
+      <div class="hints"><span>Lizard mode off</span><span>IMU raw</span><span style="color:var(--mu)">v0.1.0</span></div>
+    </footer>
+  </div>
+</section>
+
+<!-- ======================= C ======================= -->
+<section class="mock" id="c">
+  <div class="mock-head"><h2>C · Lab bench</h2><p>An instrument, not a website: oscilloscope channels, monospace readouts, amber-on-black, dense and honest about raw data. Good fit for a reverse-engineering toolkit.</p></div>
+  <div class="window C">
+    <div class="menubar">
+      <div class="id">◆ SC-TOOLKIT</div>
+      <a class="on">F1 VISUALIZER</a><a>F2 HAPTICS</a><a>F3 REMAP</a><a>F4 REPORTS</a>
+      <div class="rt"><span>DEV <b>28de:1304</b></span><span>SLOT <b>2</b></span><span>RATE <b>265.1 Hz</b></span><span>BATT <b>82%</b></span><span>● <b>LINK</b></span></div>
+    </div>
+    <div class="bench">
+      <div class="col">
+        <div class="blk" style="flex:1;display:flex;flex-direction:column;padding:0">
+          <div class="lbl" style="padding:10px 12px 0">ORIENTATION <b>QUAT 0x42</b></div>
+          <div class="view">
+            <span class="corner" style="left:8px;top:8px;border-width:1px 0 0 1px"></span><span class="corner" style="right:8px;top:8px;border-width:1px 1px 0 0"></span>
+            <span class="corner" style="left:8px;bottom:8px;border-width:0 0 1px 1px"></span><span class="corner" style="right:8px;bottom:8px;border-width:0 1px 1px 0"></span>
+            <svg viewBox="0 0 400 240" style="position:absolute;left:50%;top:46%;width:88%;transform:translate(-50%,-50%) perspective(700px) rotateX(35deg) rotateZ(-10deg)" data-ctrl="Cwire"></svg>
+            <div class="ro" style="left:16px;bottom:14px">PITCH <b>+12.4°</b><br>ROLL&nbsp; <b>-4.1°</b><br>YAW&nbsp;&nbsp; <b>+37.0°</b></div>
+            <div class="ro" style="right:16px;bottom:14px;text-align:right">[R] RE-ZERO YAW<br>[D] DEMO</div>
+          </div>
+        </div>
+        <div class="blk">
+          <div class="lbl">STICKS / PADS <b>XY</b></div>
+          <div class="xy"><svg data-xy="0.3,-0.25,0.5,0.4"></svg><svg data-xy="-0.05,0.08,-0.3,-0.1"></svg></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="scope">
+          <div class="ch"><svg data-scope="0"></svg><div class="meta"><div class="n" style="color:var(--amb)">CH1 GYRO</div><span>X<b>+142</b></span><span>Y<b>-38</b></span><span>Z<b>+9</b></span><span>°/s · 500/div</span></div></div>
+          <div class="ch"><svg data-scope="1"></svg><div class="meta"><div class="n" style="color:var(--cy)">CH2 ACCEL</div><span>X<b>+0.02</b></span><span>Y<b>-0.11</b></span><span>Z<b>+1.01</b></span><span>g · 0.5/div</span></div></div>
+          <div class="ch"><svg data-scope="2"></svg><div class="meta"><div class="n" style="color:var(--grn)">CH3 TRIG</div><span>L<b>28%</b></span><span>R<b>64%</b></span><span>&nbsp;</span><span>% · 25/div</span></div></div>
+          <div class="ch"><svg data-scope="3"></svg><div class="meta"><div class="n" style="color:var(--mag)">CH4 PRESS</div><span>L<b>0</b></span><span>R<b>3114</b></span><span>&nbsp;</span><span>raw · 1k/div</span></div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="blk">
+          <div class="lbl">BUTTONS <b>0x00a40011</b></div>
+          <div class="leds">
+            <span class="led on"><i></i>A</span><span class="led"><i></i>B</span><span class="led"><i></i>X</span><span class="led on"><i></i>Y</span>
+            <span class="led"><i></i>L</span><span class="led on"><i></i>R</span><span class="led"><i></i>L4</span><span class="led on"><i></i>L5</span>
+            <span class="led"><i></i>R4</span><span class="led"><i></i>R5</span><span class="led"><i></i>VIEW</span><span class="led"><i></i>MENU</span>
+            <span class="led"><i></i>D↑</span><span class="led"><i></i>D↓</span><span class="led"><i></i>D←</span><span class="led"><i></i>D→</span>
+          </div>
+          <div class="meterrow"><span style="color:var(--mu)">LT</span><div class="seg" data-seg="28"></div><span class="num">28%</span></div>
+          <div class="meterrow"><span style="color:var(--mu)">RT</span><div class="seg" data-seg="64"></div><span class="num">64%</span></div>
+        </div>
+        <div class="blk">
+          <div class="lbl">REPORT <b>0x42 · 54 B · SEQ 18204</b></div>
+          <pre class="hex" data-hex></pre>
+        </div>
+        <div class="blk" style="flex:1">
+          <div class="lbl">DEVICE</div>
+          <dl class="kv">
+            <dt>Battery</dt><dd>82% charging</dd><dt>IMU time</dt><dd>48 120 334 µs</dd>
+            <dt>Undecoded</dt><dd style="color:var(--amb)">0x7b ×12</dd><dt>Lizard</dt><dd>off · resent 2 s</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+    <div class="status"><span class="warn">! STEAM RUNNING</span><span>DESKTOP LAYOUT ACTIVE</span><span style="margin-left:auto">CC BY 4.0 MODEL: DARK_IGOREK</span><span>v0.1.0</span></div>
+  </div>
+</section>
+
+<script>
+const $ = (s) => [...document.querySelectorAll(s)];
+const NS = "http://www.w3.org/2000/svg";
+
+// Top-down controller schematic. style: { body, stroke, idle, on, onText, text, wire }
+const BODY = "M62,30 Q200,14 338,30 Q384,38 392,92 L398,186 Q400,226 368,230 Q338,232 320,198 L298,164 Q200,154 102,164 L80,198 Q62,232 32,230 Q0,226 2,186 L8,92 Q16,38 62,30 Z";
+function ctrl(s, held) {
+  const on = (k) => held.includes(k);
+  const f = (k) => on(k) ? s.on : s.idle;
+  const tf = (k) => on(k) ? s.onText : s.text;
+  const btn = (k, x, y, r = 9, label = k) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f(k)}" stroke="${s.stroke}" stroke-width="1"/>${label ? `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9" font-weight="600" fill="${tf(k)}">${label}</text>` : ""}`;
+  const pad = (k, x, touch) => `<rect x="${x}" y="98" width="74" height="74" rx="16" fill="${s.idle}" stroke="${on(k) ? s.on : s.stroke}" stroke-width="${on(k) ? 1.6 : 1}"/>${touch ? `<circle cx="${x + touch[0]}" cy="${98 + touch[1]}" r="7" fill="${s.on}" opacity=".9"/><circle cx="${x + touch[0]}" cy="${98 + touch[1]}" r="14" fill="none" stroke="${s.on}" opacity=".35"/>` : ""}`;
+  const stick = (k, x, y, dx, dy) => `<circle cx="${x}" cy="${y}" r="20" fill="${s.idle}" stroke="${on(k + "t") ? s.on : s.stroke}"/><circle cx="${x + dx}" cy="${y + dy}" r="12" fill="${s.body}" stroke="${on(k + "t") ? s.on : s.stroke}" stroke-width="1.4"/>`;
+  const trig = (k, x, pct) => `<rect x="${x}" y="-10" width="70" height="16" rx="6" fill="${s.idle}" stroke="${s.stroke}"/><rect x="${x + 2}" y="-8" width="${66 * pct}" height="12" rx="4" fill="${s.on}" opacity=".85"/><text x="${x + 35}" y="2" text-anchor="middle" font-size="9" font-weight="600" fill="${s.text}">${k}</text>`;
+  const dpad = (x, y) => ["DU", 0, -13, "DL", -13, 0, "DR", 13, 0, "DD", 0, 13].reduce((a, _, i, arr) => i % 3 ? a : a + `<rect x="${x + arr[i + 1] - 6}" y="${y + arr[i + 2] - 6}" width="12" height="12" rx="3" fill="${f(arr[i])}" stroke="${s.stroke}"/>`, "");
+  return `
+    ${trig("LT", 40, 0.28)}${trig("RT", 290, 0.64)}
+    <path d="${BODY}" fill="${s.body}" stroke="${s.wire || s.stroke}" stroke-width="${s.wire ? 1.2 : 1}"/>
+    ${dpad(56, 64)}
+    ${stick("L", 128, 68, 6, -5)}${stick("R", 272, 68, -1, 2)}
+    ${btn("Y", 344, 52)}${btn("X", 328, 68)}${btn("B", 360, 68)}${btn("A", 344, 84)}
+    ${btn("V", 178, 92, 6, "")}${btn("M", 222, 92, 6, "")}
+    <circle cx="200" cy="66" r="11" fill="${s.idle}" stroke="${s.stroke}"/><text x="200" y="69.5" text-anchor="middle" font-size="8" fill="${s.text}">S</text>
+    ${pad("LP", 52)}${pad("RP", 274, [48, 30])}
+  `;
+}
+const styles = {
+  A:    { body: "#161a21", stroke: "#2c3340", idle: "#1d222b", on: "#5ad1ff", onText: "#04121c", text: "#8a94a3" },
+  A3d:  { body: "#1b212b", stroke: "#3a4454", idle: "#222935", on: "#5ad1ff", onText: "#04121c", text: "#8a94a3" },
+  B3d:  { body: "#1e2a3b", stroke: "#3d5270", idle: "#253449", on: "#1a9fff", onText: "#fff", text: "#9fb3c8" },
+  Cwire:{ body: "none", stroke: "#ffb02088", idle: "none", on: "#ffb020", onText: "#1a1200", text: "#ffb020", wire: "#ffb020" },
+};
+const HELD = ["A", "Y", "Rt", "RP"];
+for (const el of $("[data-ctrl]")) el.innerHTML = ctrl(styles[el.dataset.ctrl], HELD);
+
+// Deterministic-ish signals
+function sig(n, seed, amp = 1, f = 1) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    out.push(amp * (Math.sin((t * 6 + seed) * f) * 0.55 + Math.sin((t * 17 + seed * 3) * f) * 0.25 + Math.sin(t * 41 + seed * 7) * 0.08));
+  }
+  return out;
+}
+function path(vals, w, h, lo = -1, hi = 1) {
+  return vals.map((v, i) => `${i ? "L" : "M"}${(i / (vals.length - 1) * w).toFixed(1)},${(h - (v - lo) / (hi - lo) * h).toFixed(1)}`).join("");
+}
+
+// A: sparklines with area fill
+const aCols = ["#5ad1ff", "#ff8a4c", "#b48cff"];
+$("[data-spark]").forEach((svg, k) => {
+  const w = 400, h = 64; svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("preserveAspectRatio", "none");
+  const n = k < 2 ? 3 : 2;
+  let g = `<defs><linearGradient id="ag${k}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5ad1ff" stop-opacity=".25"/><stop offset="1" stop-color="#5ad1ff" stop-opacity="0"/></linearGradient></defs>`;
+  g += `<line x1="0" x2="${w}" y1="${h / 2}" y2="${h / 2}" stroke="#ffffff10" stroke-dasharray="2 4"/>`;
+  for (let i = 0; i < n; i++) {
+    const v = sig(120, k * 2 + i * 1.7, 0.85 - i * 0.2, 1 + i * 0.3).map((x) => k >= 2 ? Math.abs(x) * 1.6 - 0.9 : x);
+    const d = path(v, w, h);
+    if (i === 0) g += `<path d="${d}L${w},${h}L0,${h}Z" fill="url(#ag${k})"/>`;
+    g += `<path d="${d}" fill="none" stroke="${aCols[i]}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  }
+  svg.innerHTML = g;
+});
+
+// B: ring gauges and stick wells
+function drawRing(svg, p) {
+  const r = 38, c = 2 * Math.PI * r;
+  svg.innerHTML = `<defs><linearGradient id="rg${p}" x1="0" x2="1"><stop offset="0" stop-color="#66c0f4"/><stop offset="1" stop-color="#1a9fff"/></linearGradient></defs>
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="#ffffff12" stroke-width="8"/>
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="url(#rg${p})" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 46 46)" style="filter:drop-shadow(0 0 6px #1a9fff88)"/>
+    <text x="46" y="52" text-anchor="middle" font-size="20" font-weight="700" fill="#eef3f8" font-family="Barlow">${Math.round(p * 100)}<tspan font-size="11" fill="#8ea0b4">%</tspan></text>`;
+}
+$("[data-ring]").forEach((svg) => drawRing(svg, +svg.dataset.ring / 100));
+
+// B: the view stays front-facing; holding RT (here: holding the mouse on the view) lets it follow the controller.
+{
+  const hero = document.querySelector("[data-hero]"), model = hero.querySelector("[data-model]");
+  const text = hero.querySelector("[data-lock-text]"), ring = document.querySelector("[data-rt-ring]");
+  const BASE = "translate(-50%,-50%)";
+  let held = false, t0 = 0;
+  const tick = (t) => {
+    if (!held) return;
+    const s = (t - t0) / 1000;
+    model.style.transform = `${BASE} perspective(900px) rotateX(${18 + Math.sin(s * 1.3) * 22}deg) rotateY(${Math.sin(s * 0.9) * 28}deg) rotateZ(${Math.sin(s * 0.7) * 12}deg)`;
+    requestAnimationFrame(tick);
+  };
+  const set = (on) => {
+    held = on;
+    hero.classList.toggle("free", on);
+    text.textContent = on ? "Following controller motion" : "Front view locked";
+    drawRing(ring, on ? 1 : 0);
+    if (on) { t0 = performance.now(); requestAnimationFrame(tick); }
+    else model.style.transform = BASE;
+  };
+  hero.addEventListener("pointerdown", () => set(true));
+  addEventListener("pointerup", () => held && set(false));
+}
+$("[data-stick]").forEach((svg) => {
+  const [x, y] = svg.dataset.stick.split(",").map(Number);
+  const cx = 46 + x * 34, cy = 46 + y * 34;
+  svg.innerHTML = `<circle cx="46" cy="46" r="42" fill="#00000030" stroke="#ffffff14"/><circle cx="46" cy="46" r="21" fill="none" stroke="#ffffff0c"/>
+    <line x1="4" x2="88" y1="46" y2="46" stroke="#ffffff0c"/><line y1="4" y2="88" x1="46" x2="46" stroke="#ffffff0c"/>
+    <line x1="46" y1="46" x2="${cx}" y2="${cy}" stroke="#1a9fff66" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy}" r="9" fill="#1a9fff" style="filter:drop-shadow(0 0 8px #1a9fff)"/>`;
+});
+$("[data-wave]").forEach((svg) => {
+  const w = 500, h = 120; svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("preserveAspectRatio", "none");
+  const cols = ["#1a9fff", "#ffb547", "#c18cff"]; let g = "";
+  for (let i = 0; i < 3; i++) g += `<path d="${path(sig(160, i * 2.3, 0.8 - i * 0.2, 1 + i * 0.25), w, h)}" fill="none" stroke="${cols[i]}" stroke-width="2.2" vector-effect="non-scaling-stroke" stroke-linecap="round" style="filter:drop-shadow(0 0 4px ${cols[i]}88)"/>`;
+  svg.innerHTML = g;
+});
+
+// C: scope channels
+const cCols = [["#ffb020", "#ffd27a", "#b37400"], ["#5fd4e8", "#a8eef8", "#2b8a9a"], ["#7cf29a", "#3e9b58"], ["#ff6b9a", "#a63a5c"]];
+$("[data-scope]").forEach((svg) => {
+  const k = +svg.dataset.scope, w = 600, h = 140;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("preserveAspectRatio", "none");
+  let g = "";
+  for (let x = 0; x <= 10; x++) g += `<line x1="${x * w / 10}" x2="${x * w / 10}" y1="0" y2="${h}" stroke="${x === 5 ? "#ffffff18" : "#ffffff09"}" vector-effect="non-scaling-stroke"/>`;
+  for (let y = 0; y <= 4; y++) g += `<line y1="${y * h / 4}" y2="${y * h / 4}" x1="0" x2="${w}" stroke="${y === 2 ? "#ffffff18" : "#ffffff09"}" vector-effect="non-scaling-stroke"/>`;
+  cCols[k].forEach((c, i) => {
+    let v = sig(220, k * 3 + i * 1.3, 0.8 - i * 0.22, 1 + i * 0.4);
+    if (k >= 2) v = v.map((x) => Math.max(-0.9, Math.abs(x) * 1.8 - 0.9));
+    g += `<path d="${path(v, w, h)}" fill="none" stroke="${c}" stroke-width="1.3" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 3px ${c})"/>`;
+  });
+  g += `<text x="6" y="14" font-size="11" fill="#6f786a" font-family="IBM Plex Mono">CH${k + 1}</text>`;
+  svg.innerHTML = g;
+});
+$("[data-xy]").forEach((svg, k) => {
+  const [sx, sy, px, py] = svg.dataset.xy.split(",").map(Number);
+  svg.setAttribute("viewBox", "0 0 100 100");
+  let g = `<rect x="1" y="1" width="98" height="98" fill="#090a09" stroke="#262a24"/>`;
+  for (let i = 1; i < 4; i++) g += `<line x1="${i * 25}" x2="${i * 25}" y1="1" y2="99" stroke="#ffffff0a"/><line y1="${i * 25}" y2="${i * 25}" x1="1" x2="99" stroke="#ffffff0a"/>`;
+  g += `<circle cx="50" cy="50" r="40" fill="none" stroke="#ffb02033" stroke-dasharray="2 3"/>`;
+  g += `<circle cx="${50 + sx * 40}" cy="${50 + sy * 40}" r="4" fill="#ffb020" style="filter:drop-shadow(0 0 4px #ffb020)"/>`;
+  g += `<rect x="${50 + px * 40 - 3}" y="${50 + py * 40 - 3}" width="6" height="6" fill="none" stroke="#5fd4e8" stroke-width="1.2"/>`;
+  g += `<text x="5" y="12" font-size="8" fill="#6f786a" font-family="IBM Plex Mono">${k ? "R" : "L"} ● stick ▢ pad</text>`;
+  svg.innerHTML = g;
+});
+$("[data-seg]").forEach((el) => { const n = 24, on = Math.round(+el.dataset.seg / 100 * n); el.innerHTML = Array.from({ length: n }, (_, i) => `<i class="${i < on ? "on" : ""}"></i>`).join(""); });
+
+// Hex dumps
+const bytes = Array.from({ length: 54 }, (_, i) => (i * 73 + 17) % 256);
+const changed = new Set([4, 5, 12, 13, 14, 15, 22, 23, 30]);
+const hexHtml = (hi, o) => bytes.reduce((acc, b, i) => {
+  if (i % 8 === 0) acc += (i ? "\n" : "") + `<span class="o">${i.toString(16).padStart(2, "0")}</span>  `;
+  const h = b.toString(16).padStart(2, "0");
+  return acc + (changed.has(i) ? `<${hi}>${h}</${hi.split(" ")[0]}>` : h) + " ";
+}, "");
+$("[data-hex]").forEach((el) => (el.innerHTML = hexHtml('span class="h"')));
+</script>
+</body>
+</html>
