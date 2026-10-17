@@ -1,4 +1,5 @@
 import { pressed, type ButtonName, type ControllerState, type Snapshot, type Trackpad } from "../controller";
+import { Controller3D } from "./controller3d";
 import type { Tab } from "./tab";
 
 const AXIS = 32768;
@@ -38,10 +39,18 @@ export class VisualizerTab implements Tab {
   id = "visualizer";
   title = "Visualizer";
   private root!: HTMLElement;
+  private view!: Controller3D;
 
   mount(root: HTMLElement): void {
     this.root = root;
     root.innerHTML = `
+      <div class="view3d">
+        <div class="view3d-canvas" data-view3d></div>
+        <div class="view3d-overlay">
+          <span data-angles></span>
+          <button data-recenter title="Make the current heading straight ahead">Re-center</button>
+        </div>
+      </div>
       <div class="visualizer">
         ${sideHtml("left")}
         <section class="center">
@@ -72,6 +81,8 @@ export class VisualizerTab implements Tab {
         </section>
         ${sideHtml("right")}
       </div>`;
+    this.view = new Controller3D(this.q("[data-view3d]"));
+    this.q("[data-recenter]").addEventListener("click", () => this.view.recenter());
   }
 
   update(snap: Snapshot): void {
@@ -84,6 +95,12 @@ export class VisualizerTab implements Tab {
   }
 
   private render(s: ControllerState): void {
+    this.view.update(s);
+    const a = this.view.angles();
+    this.q("[data-angles]").textContent = s.imu.quat
+      ? `pitch ${a.pitch.toFixed(0)}° · roll ${a.roll.toFixed(0)}° · yaw ${a.yaw.toFixed(0)}°`
+      : `report 0x${s.report_id.toString(16)} has no orientation data`;
+
     this.root.querySelectorAll<HTMLElement>("[data-btn]").forEach((el) => {
       el.classList.toggle("on", pressed(s, el.dataset.btn as ButtonName));
     });

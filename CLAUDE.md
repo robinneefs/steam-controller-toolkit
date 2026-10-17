@@ -40,6 +40,21 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
 - Reading works while Steam is running.
 - Never poll several interfaces in turn with short timeouts: Windows timeouts are ≥ ~15 ms and
   you lose ~90% of reports. Use one blocking thread per interface (see `hub.rs`).
+- Only send settings to a slot after it has sent a state report (as SDL does). Sending them to
+  empty dongle slots fails every time.
+- Report `0x42` carries an orientation quaternion (w, x, y, z; 32767 = 1.0) that rotates sensor
+  vectors into a world frame with +Z up. Sensor frame: +X right, +Y forward (towards triggers),
+  +Z out of the face. Three.js mapping is (x, y, z) -> (x, z, -y). Yaw drifts / has no absolute
+  reference; the visualizer's Re-center button zeroes it.
+
+## HID enumeration must stay filtered
+
+Never enumerate all HID devices (`HidApi::new()` with discovery on, `refresh_devices()`,
+`add_devices(0, 0)`). On Windows, hidapi asks every matching device for its strings, and some
+devices never answer (seen: Corsair `1b1c:1b3a` hangs in `HidD_GetSerialNumberString`), which
+blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enumerate VID 28de.
+`third_party/hidapi` is hidapi 2.6.7 patched so `HidApi::new()` honours
+`disable_device_discovery()`; it is wired in via `[patch.crates-io]` in the root `Cargo.toml`.
 
 ## Commands
 

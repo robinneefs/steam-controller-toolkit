@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
 members = ["crates/sc-core", "src-tauri"]
+exclude = ["third_party"]
+
+# hidapi 2.6.7 with one fix: HidApi::new() skips the full device scan when discovery is disabled.
+# See the comment in third_party/hidapi/src/lib.rs (HidApi::new).
+[patch.crates-io]
+hidapi = { path = "third_party/hidapi" }
 
 # Size optimisations for release bundles: https://tauri.app/concept/size/
 [profile.release]

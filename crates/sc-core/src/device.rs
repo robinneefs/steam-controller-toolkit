@@ -27,6 +27,21 @@ pub fn is_controller_interface(info: &DeviceInfo) -> bool {
     pid_ok && (info.usage_page() == 0 || info.usage_page() >= VENDOR_USAGE_PAGE_MIN)
 }
 
+/// An hidapi context that only enumerates Valve devices. Enumerating every HID device on the
+/// system can block indefinitely on Windows when some unrelated device stops responding.
+pub fn valve_api() -> HidResult<HidApi> {
+    HidApi::disable_device_discovery();
+    let mut api = HidApi::new()?;
+    api.add_devices(protocol::VALVE_VID, 0)?;
+    Ok(api)
+}
+
+/// Re-enumerate Valve devices only (see [`valve_api`]).
+pub fn rescan(api: &mut HidApi) -> HidResult<()> {
+    api.reset_devices()?;
+    api.add_devices(protocol::VALVE_VID, 0)
+}
+
 /// Every Valve HID entry, for debugging.
 pub fn list_valve_devices(api: &HidApi) -> Vec<&DeviceInfo> {
     api.device_list().filter(|d| d.vendor_id() == protocol::VALVE_VID).collect()

@@ -9,9 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use hidapi::HidApi;
-
-use crate::device::{find_controller_interfaces, Controller};
+use crate::device::{find_controller_interfaces, rescan, valve_api, Controller};
+use crate::protocol;
 
 const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -39,7 +38,7 @@ impl Default for HubOptions {
 /// Start the hub. Events are delivered on `tx`; the hub stops when the receiver is dropped.
 pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) {
     thread::spawn(move || {
-        let mut api = match HidApi::new() {
+        let mut api = match valve_api() {
             Ok(api) => api,
             Err(e) => {
                 let _ = tx.send(HubEvent::Closed { slot: "hidapi".into(), error: e.to_string() });
@@ -48,7 +47,7 @@ pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) {
         };
         let open: Arc<Mutex<HashSet<String>>> = Arc::default();
         loop {
-            let _ = api.refresh_devices();
+            let _ = rescan(&mut api);
             for info in find_controller_interfaces(&api) {
                 let path = info.path().to_string_lossy().into_owned();
                 if open.lock().unwrap().contains(&path) {
@@ -75,14 +74,23 @@ pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) {
 
 fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, configure: bool) -> String {
     let mut buf = [0u8; 64];
+    // Only configure a slot once a controller in it has sent state, like SDL does. Sending
+    // settings to empty dongle slots fails every time and may wedge the dongle.
+    let mut active = false;
     loop {
-        if configure {
-            // Fails on empty dongle slots; harmless, so ignore it.
+        if configure && active {
             let _ = ctl.keep_configured();
         }
         match ctl.read_raw(&mut buf, 500) {
             Ok(0) => {}
             Ok(n) => {
+                match buf[0] {
+                    protocol::REPORT_STATE | protocol::REPORT_STATE_NO_QUAT | protocol::REPORT_STATE_TIMESTAMP => {
+                        active = true
+                    }
+                    protocol::REPORT_WIRELESS_STATUS | protocol::REPORT_WIRELESS_STATUS_X => active = buf[1] == 2,
+                    _ => {}
+                }
                 let event = HubEvent::Packet { slot: slot.to_string(), data: buf[..n].to_vec() };
                 if tx.send(event).is_err() {
                     return "hub stopped".into();

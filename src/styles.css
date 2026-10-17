@@ -41,6 +41,42 @@ body { margin: 0; min-height: 100vh; background: var(--bg); }
 
 #tab-content { padding: 16px; }
 
+.view3d {
+  position: relative;
+  height: 340px;
+  margin-bottom: 16px;
+  background: radial-gradient(ellipse at center, #1d232b 0%, var(--panel) 70%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.view3d-canvas { position: absolute; inset: 0; }
+.view3d-overlay {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.view3d-overlay button {
+  pointer-events: auto;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.view3d-overlay button:hover { border-color: var(--accent); }
+.disconnected .view3d { opacity: 0.35; }
+
 .visualizer {
   display: grid;
   grid-template-columns: 1fr minmax(220px, 300px) 1fr;

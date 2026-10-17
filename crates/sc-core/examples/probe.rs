@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use sc_core::device::list_valve_devices;
+use sc_core::device::{list_valve_devices, valve_api};
 use sc_core::hub::{self, HubOptions};
 use sc_core::protocol::{self, buttons, Report};
-use sc_core::{HidApi, HubEvent};
+use sc_core::HubEvent;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -26,7 +26,7 @@ fn main() {
         .and_then(|s| s.parse::<u64>().ok());
 
     println!("== Valve HID devices ==");
-    let api = HidApi::new().expect("failed to initialise hidapi");
+    let api = valve_api().expect("failed to initialise hidapi");
     for d in list_valve_devices(&api) {
         println!(
             "  pid={:04x} if={} usage_page={:04x} usage={:04x} product={:?}",
