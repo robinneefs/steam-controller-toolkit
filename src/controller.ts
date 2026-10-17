@@ -42,6 +42,8 @@ export interface Snapshot {
   raw: number[];
   /** Report ids the parser does not decode yet, with their latest bytes. */
   unknown_reports: { id: number; count: number; data: number[] }[];
+  /** Steam is running; its Desktop Layout may turn controller input into mouse/keyboard input. */
+  steam_running: boolean;
 }
 
 /** EChargeState from SDL's controller_structs.h. */

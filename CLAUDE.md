@@ -37,7 +37,10 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
   `0x45` has no quaternion, `0x47` adds a trackpad timestamp. `0x43` battery, `0x79`/`0x46`
   wireless connect/disconnect. `0x7b` seen but undecoded.
 - Accel 16384 counts = 1 g. Gyro ±2000 °/s full scale.
-- Reading works while Steam is running.
+- Reading works while Steam is running. But Steam's Desktop Layout then turns the controller
+  into mouse/keyboard input on its own, which our lizard-mode-off cannot stop (it only stops
+  the firmware's emulation). The app detects Steam (`watch_steam` in `src-tauri/src/lib.rs`)
+  and shows a warning banner.
 - Never poll several interfaces in turn with short timeouts: Windows timeouts are ≥ ~15 ms and
   you lose ~90% of reports. Use one blocking thread per interface (see `hub.rs`).
 - Only send settings to a slot after it has sent a state report (as SDL does). Sending them to

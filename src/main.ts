@@ -46,7 +46,21 @@ function renderStatus(snap: Snapshot): void {
   status.className = "status connected";
 }
 
+// Warn while Steam is running; a dismissal lasts until Steam is closed and reopened.
+const steamWarning = document.querySelector<HTMLElement>("#steam-warning")!;
+let steamWarningDismissed = false;
+steamWarning.querySelector("[data-dismiss]")!.addEventListener("click", () => {
+  steamWarningDismissed = true;
+  steamWarning.hidden = true;
+});
+
+function renderSteamWarning(snap: Snapshot): void {
+  if (!snap.steam_running) steamWarningDismissed = false;
+  steamWarning.hidden = !snap.steam_running || steamWarningDismissed;
+}
+
 onSnapshot((snap) => {
   renderStatus(snap);
+  renderSteamWarning(snap);
   active.update?.(snap);
 });

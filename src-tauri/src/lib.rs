@@ -1,4 +1,6 @@
-use std::sync::mpsc;
+use std::ffi::OsStr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -6,6 +8,7 @@ use sc_core::hub::{self, HubOptions};
 use sc_core::protocol::{self, BatteryStatus, Report};
 use sc_core::{ControllerState, HubEvent};
 use serde::Serialize;
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
@@ -24,6 +27,28 @@ struct Snapshot {
     raw: Vec<u8>,
     /// Report ids the parser does not decode yet, with their latest bytes.
     unknown_reports: Vec<UnknownReport>,
+    /// Steam is running. Its Desktop Layout turns controller input into mouse/keyboard input,
+    /// which we cannot switch off from here (our lizard-mode-off only stops the firmware's own).
+    steam_running: bool,
+}
+
+const STEAM_PROCESS: &str = if cfg!(windows) {
+    "steam.exe"
+} else if cfg!(target_os = "macos") {
+    "steam_osx"
+} else {
+    "steam"
+};
+
+fn watch_steam(flag: Arc<AtomicBool>) {
+    loop {
+        // A fresh list each time: reusing one System kept exited processes listed on Windows.
+        let mut sys = System::new();
+        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+        let running = sys.processes_by_exact_name(OsStr::new(STEAM_PROCESS)).next().is_some();
+        flag.store(running, Ordering::Relaxed);
+        thread::sleep(Duration::from_secs(3));
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +61,10 @@ struct UnknownReport {
 fn forward_events(app: AppHandle) {
     let (tx, rx) = mpsc::channel();
     hub::spawn(tx, HubOptions::default());
+
+    let steam_running = Arc::new(AtomicBool::new(false));
+    let flag = steam_running.clone();
+    thread::spawn(move || watch_steam(flag));
 
     let mut snap = Snapshot::default();
     let mut last_emit = Instant::now();
@@ -77,6 +106,7 @@ fn forward_events(app: AppHandle) {
         }
         if last_emit.elapsed() >= EMIT_INTERVAL {
             last_emit = Instant::now();
+            snap.steam_running = steam_running.load(Ordering::Relaxed);
             let _ = app.emit("controller", &snap);
         }
     }
