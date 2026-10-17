@@ -3,8 +3,8 @@
 //! Each interface gets its own blocking reader thread: polling interfaces in turn with short
 //! timeouts drops most reports on Windows, where a timeout lasts at least one ~15 ms tick.
 
-use std::collections::HashSet;
-use std::sync::mpsc::Sender;
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -24,6 +24,28 @@ pub enum HubEvent {
     Closed { slot: String, error: String },
 }
 
+/// Something to do on one interface. Its reader thread runs it between reads.
+#[derive(Debug)]
+pub enum Command {
+    /// Ask the controller to power off. `reply` gets the HID error, if any.
+    TurnOff { reply: Sender<Result<(), String>> },
+}
+
+/// Handle for sending [`Command`]s to the interfaces the hub has open.
+#[derive(Clone, Default)]
+pub struct Hub {
+    commands: Arc<Mutex<HashMap<String, Sender<Command>>>>,
+}
+
+impl Hub {
+    /// Queue `cmd` for the interface `slot` (as in [`HubEvent`]).
+    pub fn send(&self, slot: &str, cmd: Command) -> Result<(), String> {
+        let commands = self.commands.lock().unwrap();
+        let tx = commands.get(slot).ok_or_else(|| format!("{slot} is not connected"))?;
+        tx.send(cmd).map_err(|_| format!("{slot} is not connected"))
+    }
+}
+
 pub struct HubOptions {
     /// Send the lizard-mode-off / IMU-on settings report. Disable to observe default behaviour.
     pub configure: bool,
@@ -36,7 +58,10 @@ impl Default for HubOptions {
 }
 
 /// Start the hub. Events are delivered on `tx`; the hub stops when the receiver is dropped.
-pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) {
+/// The returned [`Hub`] sends commands to open interfaces.
+pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) -> Hub {
+    let hub = Hub::default();
+    let commands = hub.commands.clone();
     thread::spawn(move || {
         let mut api = match valve_api() {
             Ok(api) => api,
@@ -59,20 +84,24 @@ pub fn spawn(tx: Sender<HubEvent>, opts: HubOptions) {
                     return;
                 }
                 open.lock().unwrap().insert(path.clone());
-                let (tx, open) = (tx.clone(), open.clone());
+                let (cmd_tx, cmd_rx) = mpsc::channel();
+                commands.lock().unwrap().insert(slot.clone(), cmd_tx);
+                let (tx, open, commands) = (tx.clone(), open.clone(), commands.clone());
                 let configure = opts.configure;
                 thread::spawn(move || {
-                    let error = read_loop(ctl, &slot, &tx, configure);
+                    let error = read_loop(ctl, &slot, &tx, &cmd_rx, configure);
                     open.lock().unwrap().remove(&path);
+                    commands.lock().unwrap().remove(&slot);
                     let _ = tx.send(HubEvent::Closed { slot, error });
                 });
             }
             thread::sleep(RESCAN_INTERVAL);
         }
     });
+    hub
 }
 
-fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, configure: bool) -> String {
+fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, commands: &Receiver<Command>, configure: bool) -> String {
     let mut buf = [0u8; 64];
     // Only configure a slot once a controller in it has sent state, like SDL does. Sending
     // settings to empty dongle slots fails every time and may wedge the dongle.
@@ -80,6 +109,14 @@ fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, configure: 
     loop {
         if configure && active {
             let _ = ctl.keep_configured();
+        }
+        // Commands wait at most one read: ~4 ms while a controller reports, 500 ms when idle.
+        while let Ok(cmd) = commands.try_recv() {
+            match cmd {
+                Command::TurnOff { reply } => {
+                    let _ = reply.send(ctl.turn_off().map_err(|e| e.to_string()));
+                }
+            }
         }
         match ctl.read_raw(&mut buf, 500) {
             Ok(0) => {}

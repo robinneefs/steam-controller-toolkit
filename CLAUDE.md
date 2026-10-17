@@ -1,7 +1,9 @@
 # Steam Controller Toolkit
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
-(codename "Triton"). Each tool lives in its own tab. First tab: a live input visualizer.
+(codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Raw data (device facts
+and report bytes) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs, rounded tiles.
 
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
 generated from it with `npx tauri icon assets/logo.png` (delete the android/ios folders after);
@@ -23,8 +25,9 @@ documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`.
 
 Create `src/tabs/<name>.ts` implementing `Tab`, add it to the `tabs` array in `src/main.ts`.
 If it needs data the snapshot lacks, extend `Snapshot` in Rust and `controller.ts` together.
-If it needs to send commands to the controller (haptics, settings), add a Tauri command in
-`src-tauri/src/lib.rs` backed by a method on `sc_core::Controller`.
+If it needs to send commands to the controller (haptics, settings), add a method on
+`sc_core::Controller`, a `hub::Command` variant that `read_loop` runs, and a Tauri command in
+`src-tauri/src/lib.rs` that sends it with `Hub::send` (see `turn_off_controller`).
 
 ## Protocol notes (verified on hardware)
 
@@ -38,6 +41,9 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
 - Feature report `[0x01, 0x87, len, (setting u8, value u16)...]` sets settings. We send
   lizard mode (9) = 0 and IMU mode (48) = raw accel|gyro (0x18), re-sent every 2 s because the
   controller reverts. It fails on empty dongle slots, which is expected.
+- Power off: feature report `[0x01, 0x9F, 4, 'o','f','f','!']` (`ID_TURN_OFF_CONTROLLER`, payload
+  from the original Steam Controller), sent via `Hub::send(slot, Command::TurnOff)`. SDL's Triton
+  driver never uses it, but it works on this controller (verified over the Puck dongle).
 - Input report `0x42` (54 bytes, includes orientation quaternion) observed at ~265 Hz.
   `0x45` has no quaternion, `0x47` adds a trackpad timestamp. `0x43` battery, `0x79`/`0x46`
   wireless connect/disconnect. `0x7b` seen but undecoded.
@@ -53,13 +59,17 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
 - Report `0x42` carries an orientation quaternion (w, x, y, z; 32767 = 1.0) that rotates sensor
   vectors into a world frame with +Z up. Sensor frame: +X right, +Y forward (towards triggers),
   +Z out of the face. Three.js mapping is (x, y, z) -> (x, z, -y). Yaw drifts / has no absolute
-  reference; the visualizer's Re-center button zeroes it.
+  reference; the visualizer's Re-center yaw button zeroes it for the angle readout.
+- The 3D view rests front-facing. While the right trigger is pulled past 30% it follows how the
+  controller has turned since the pull, in the controller's own frame: `FRONT * grab⁻¹ * current`
+  (the pose at the pull becomes the resting pose; no heading needed, which the IMU cannot give). It eases
+  back on release (`Controller3D.rotating`). The hint pill in the view says so; keep it.
 
 ## 3D model
 
 `public/models/steam-controller.glb` is adapted from "Steam Machine + Controller" by
 dark_igorek (Sketchfab, CC BY 4.0). **Attribution is a license requirement**: keep the credit
-line in the 3D view, `public/models/README.md` + `LICENSE.txt`, and the README credits, and
+in the About tab (`src/tabs/about.ts`), `public/models/README.md` + `LICENSE.txt`, and the README credits, and
 credit dark_igorek anywhere the model is shown or shipped (about screens, store pages, docs).
 
 Regenerate with
@@ -91,3 +101,5 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 
 - Linux needs udev rules granting access to `hidraw` for VID 28de (Steam installs them).
 - macOS may prompt for Input Monitoring permission.
+- The window has a minimum size of 960 x 640 (`tauri.conf.json`); every tab must fit that without
+  horizontal scrolling. Tabs scroll vertically if needed, with the themed thin scrollbars.

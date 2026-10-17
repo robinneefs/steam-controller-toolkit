@@ -24,6 +24,7 @@ pub const REPORT_WIRELESS_STATUS: u8 = 0x79;
 
 pub const FEATURE_REPORT_BYTES: usize = 64;
 const MSG_SET_SETTINGS_VALUES: u8 = 0x87;
+const MSG_TURN_OFF_CONTROLLER: u8 = 0x9F;
 const SETTING_LIZARD_MODE: u8 = 9;
 const SETTING_IMU_MODE: u8 = 48;
 const IMU_SEND_RAW_ACCEL: u16 = 0x0008;
@@ -40,6 +41,18 @@ pub fn settings_report() -> [u8; FEATURE_REPORT_BYTES] {
     buf[4..6].copy_from_slice(&0u16.to_le_bytes());
     buf[6] = SETTING_IMU_MODE;
     buf[7..9].copy_from_slice(&(IMU_SEND_RAW_ACCEL | IMU_SEND_RAW_GYRO).to_le_bytes());
+    buf
+}
+
+/// Feature report asking the controller to power off: `ID_TURN_OFF_CONTROLLER` from SDL's
+/// `controller_constants.h`, with the `off!` payload the original Steam Controller expects.
+/// SDL's Triton driver never sends it, but it works on this controller (verified over the Puck).
+pub fn turn_off_report() -> [u8; FEATURE_REPORT_BYTES] {
+    let mut buf = [0u8; FEATURE_REPORT_BYTES];
+    buf[0] = 1; // report id
+    buf[1] = MSG_TURN_OFF_CONTROLLER;
+    buf[2] = 4; // payload length
+    buf[3..7].copy_from_slice(b"off!");
     buf
 }
 

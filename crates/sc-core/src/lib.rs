@@ -6,5 +6,5 @@ pub mod protocol;
 
 pub use device::Controller;
 pub use hidapi::HidApi;
-pub use hub::HubEvent;
+pub use hub::{Command, Hub, HubEvent};
 pub use protocol::{ControllerState, Report};

@@ -17,6 +17,12 @@ export interface GraphOptions {
   /** Auto range starts at zero instead of being symmetric (for non-negative data). */
   positive?: boolean;
   decimals?: number;
+  /**
+   * "sqrt" compresses large values (signed square root) so a fixed full-scale range still shows
+   * small motions. Needs `range`. `ticks` are the positive values to draw labelled gridlines at.
+   */
+  scale?: "linear" | "sqrt";
+  ticks?: number[];
 }
 
 const SAMPLES = 300; // 5 s at 60 snapshots per second
@@ -33,7 +39,7 @@ export class LiveGraph {
   constructor(container: HTMLElement, private opts: GraphOptions) {
     container.classList.add("graph");
     const legend = opts.series
-      .map((s, i) => `<span class="legend-item"><i style="background: var(${s.color})"></i>${s.name} <b data-v="${i}"></b></span>`)
+      .map((s, i) => `<span class="legend-item"><i style="background: var(${s.color})"></i>${s.name} <b data-v="${i}" data-copy></b></span>`)
       .join("");
     container.innerHTML = `
       <div class="graph-head"><span class="graph-title">${opts.title} <small>${opts.unit}</small></span>${legend}</div>
@@ -94,7 +100,9 @@ export class LiveGraph {
 
     const css = getComputedStyle(c);
     const [lo, hi] = this.yRange();
-    const y = (v: number) => h - 2 - ((v - lo) / (hi - lo)) * (h - 4);
+    const curve = this.opts.scale === "sqrt" ? (v: number) => Math.sign(v) * Math.sqrt(Math.abs(v)) : (v: number) => v;
+    const [cLo, cHi] = [curve(lo), curve(hi)];
+    const y = (v: number) => h - 2 - ((curve(v) - cLo) / (cHi - cLo)) * (h - 4);
     const x = (back: number) => w - (back / (SAMPLES - 1)) * w;
 
     // Recessive grid: baseline at zero (or bottom), plus top and bottom labels.
@@ -111,6 +119,23 @@ export class LiveGraph {
     ctx.fillText(fmt(hi, 0), 2, 1);
     ctx.textBaseline = "bottom";
     ctx.fillText(fmt(lo, 0), 2, h - 1);
+
+    // Labelled gridlines, mirrored for symmetric ranges.
+    ctx.textBaseline = "middle";
+    for (const t of this.opts.ticks ?? []) {
+      for (const v of lo < 0 ? [t, -t] : [t]) {
+        if (v <= lo || v >= hi) continue;
+        const py = Math.round(y(v)) + 0.5;
+        ctx.strokeStyle = css.getPropertyValue("--grid");
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        ctx.moveTo(28, py);
+        ctx.lineTo(w, py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillText(fmt(v, 0), 2, py);
+      }
+    }
 
     ctx.lineWidth = 2;
     ctx.lineJoin = "round";

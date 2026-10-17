@@ -70,6 +70,11 @@ impl Controller {
         self.dev.send_feature_report(&protocol::settings_report())
     }
 
+    /// Ask the controller to power off (see [`protocol::turn_off_report`]).
+    pub fn turn_off(&self) -> HidResult<()> {
+        self.dev.send_feature_report(&protocol::turn_off_report())
+    }
+
     /// Read one raw report into `buf`; returns the number of bytes, 0 on timeout.
     pub fn read_raw(&self, buf: &mut [u8], timeout_ms: i32) -> HidResult<usize> {
         self.dev.read_timeout(buf, timeout_ms)

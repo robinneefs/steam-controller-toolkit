@@ -13,15 +13,22 @@
       <div class="brand"><img src="/logo.png" alt="" /><span>Steam Controller Toolkit</span></div>
       <nav id="tabs" class="tabs"></nav>
       <div id="status" class="status">Searching for controller…</div>
+      <button id="power" class="power" hidden title="Turn off the controller">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
+        <span data-power-label></span>
+      </button>
     </header>
-    <div id="steam-warning" class="banner" hidden>
-      <span>
-        <b>Steam is running.</b> Its Desktop Layout turns the controller into a mouse and keyboard while
-        this app is open. To stop that, close Steam, or remove the bindings in Steam → Settings →
-        Controller → Desktop Layout.
-      </span>
-      <button data-dismiss title="Hide until Steam is restarted">×</button>
-    </div>
     <main id="tab-content"></main>
+    <footer class="statusbar">
+      <div id="steam-warning" class="steam-warning" hidden>
+        <span class="warn-icon">▲</span>
+        <span class="warn-text" title="Steam is running. Its Desktop Layout turns the controller into a mouse and keyboard. Close Steam, or clear Steam → Settings → Controller → Desktop Layout.">
+          <b>Steam is running.</b> Its Desktop Layout turns the controller into a mouse and keyboard.
+          Close Steam, or clear Steam → Settings → Controller → Desktop Layout.
+        </span>
+        <button data-dismiss title="Hide until Steam is restarted">×</button>
+      </div>
+      <div id="footer-info" class="footer-info"></div>
+    </footer>
   </body>
 </html>

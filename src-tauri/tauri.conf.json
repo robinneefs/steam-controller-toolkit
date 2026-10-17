@@ -14,7 +14,9 @@
       {
         "title": "Steam Controller Toolkit",
         "width": 1100,
-        "height": 720
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 640
       }
     ],
     "security": {

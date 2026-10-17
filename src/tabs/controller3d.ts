@@ -14,8 +14,23 @@ const QUAT_SCALE = 32767;
 const AXIS = 32768;
 const MAX_PIXEL_RATIO = 1.5;
 
-const GLOW = { press: new THREE.Color(0x3fa9f5), touch: new THREE.Color(0x4cc38a) };
-const FINGER_COLOR = 0xf5a63f;
+const GLOW = { press: new THREE.Color(0x1a9fff), touch: new THREE.Color(0x5fe39a) };
+const FINGER_COLOR = 0xffb547;
+
+/** Resting pose: face towards the camera, triggers on top. */
+const FRONT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+/** Right-trigger pull that starts / stops free rotation (hysteresis avoids flicker). */
+const ROTATE_ON = 0.3;
+const ROTATE_OFF = 0.15;
+/** Fraction of the remaining rotation covered per snapshot, for smooth grab and release. */
+const EASE = 0.25;
+/** Controller size facing the camera (cm), and how much of the view it may fill. */
+const MODEL_W = 16;
+const MODEL_H = 11;
+const FILL_W = 0.72;
+const FILL_H = 0.55;
+/** Camera direction from the model: straight on, slightly above. */
+const CAMERA_DIR = new THREE.Vector3(0, 4, 24).normalize();
 
 /** How far buttons travel when pressed (cm) and in which model-space direction. */
 const PRESS_DEPTH = 0.1;
@@ -38,7 +53,7 @@ const DPAD_ARMS: [arm: DpadArm, button: ButtonName][] = [
   ["up", "DpadUp"], ["down", "DpadDown"], ["left", "DpadLeft"], ["right", "DpadRight"],
 ];
 
-const STICK_TILT = 0.35; // rad at full deflection
+const STICK_TILT = 0.15; // rad at full deflection
 const DPAD_TILT = 0.12;
 const TRIGGER_SWING = 0.35;
 const PAD_HALF = 1.45; // half the trackpad's edge, cm
@@ -50,13 +65,14 @@ interface Part {
 }
 
 /**
- * 3D model of the controller, oriented by the quaternion the controller computes itself.
+ * 3D model of the controller. It rests facing the viewer; while the right trigger is held it
+ * follows how the controller has turned since the trigger went down, and eases back on release.
  *
  * Controller sensor frame: +X right, +Y forward (towards the triggers), +Z out of the face.
  * Its quaternion rotates sensor vectors into a world frame with +Z up (verified: rotating the
  * accelerometer reading gives ~(0, 0, 1 g)). Three.js uses +Y up and +Z towards the viewer, so
  * we map (x, y, z) -> (x, z, -y) for both. Yaw has no absolute reference (no magnetometer), so
- * `recenter()` zeroes it; tilt stays absolute because it is anchored to gravity.
+ * `recenter()` zeroes it for the angle readout; tilt stays absolute because it is anchored to gravity.
  *
  * Rendering is on demand: a frame is drawn only when the orientation or an input changed, or
  * the view was resized, which keeps GPU use near zero while the controller sits still.
@@ -68,6 +84,11 @@ export class Controller3D {
   private model = new THREE.Group();
   private yawRef = new THREE.Quaternion();
   private current = new THREE.Quaternion();
+  /** Controller orientation with yaw recentred; what `angles()` reports. */
+  private oriented = new THREE.Quaternion();
+  /** Controller orientation when the right trigger went down, or null while the view is locked. */
+  private grab: THREE.Quaternion | null = null;
+  private target = FRONT.clone();
   private lastDrawnQuat = new THREE.Quaternion(NaN, NaN, NaN, NaN);
   private lastInputs = "";
   private needsRecenter = true;
@@ -83,8 +104,8 @@ export class Controller3D {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
 
-    this.camera.position.set(0, 13, 21);
-    this.camera.lookAt(0, -1, 0);
+    this.camera.position.copy(CAMERA_DIR).multiplyScalar(30);
+    this.camera.lookAt(0, 0, 0);
     this.scene.add(new THREE.HemisphereLight(0xe8eef5, 0x1a1d22, 2.2));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
     key.position.set(5, 12, 9);
@@ -92,9 +113,7 @@ export class Controller3D {
     rim.position.set(-8, 4, -10);
     this.scene.add(key, rim);
 
-    const grid = new THREE.GridHelper(30, 30, 0x2c333d, 0x1e232a);
-    grid.position.y = -5.5;
-    this.scene.add(grid);
+    this.model.quaternion.copy(FRONT);
     this.scene.add(this.model);
 
     new ResizeObserver(() => this.resize()).observe(container);
@@ -102,14 +121,19 @@ export class Controller3D {
     this.load().catch((e) => console.error("failed to load controller model", e));
   }
 
-  /** Make the current heading the new "straight ahead". */
+  /** True while the right trigger is held and the model follows the controller. */
+  get rotating(): boolean {
+    return this.grab !== null;
+  }
+
+  /** Make the current heading the new "straight ahead" for `angles()`. */
   recenter(): void {
     this.needsRecenter = true;
   }
 
   /** Orientation in degrees (pitch: nose up, roll: right side down, yaw: turned left), after recentering. */
   angles(): { pitch: number; roll: number; yaw: number } {
-    const e = new THREE.Euler().setFromQuaternion(this.model.quaternion, "YXZ");
+    const e = new THREE.Euler().setFromQuaternion(this.oriented, "YXZ");
     const deg = THREE.MathUtils.radToDeg;
     return { pitch: deg(e.x), roll: -deg(e.z), yaw: deg(e.y) };
   }
@@ -124,8 +148,26 @@ export class Controller3D {
         this.yawRef.setFromAxisAngle(new THREE.Vector3(0, 1, 0), headingOf(this.current));
         this.needsRecenter = false;
       }
-      this.model.quaternion.copy(this.yawRef).invert().multiply(this.current);
+      this.oriented.copy(this.yawRef).invert().multiply(this.current);
     }
+
+    const pull = s.trigger_right / 32767;
+    if (!this.grab && pull > ROTATE_ON && s.imu.quat) {
+      this.grab = this.current.clone();
+    } else if (this.grab && (pull < ROTATE_OFF || !s.imu.quat)) {
+      this.grab = null;
+    }
+    if (this.grab) {
+      // The pose held when RT was pulled becomes the resting pose (FRONT), and the model copies
+      // every turn since then about the controller's own axes: grab⁻¹ * current is that turn in
+      // the controller's body frame. As if the model were glued to the controller, so it is
+      // right however the controller is held (flat, tilted or upright) and needs no heading,
+      // which the IMU cannot give (no magnetometer).
+      this.target.copy(FRONT).multiply(this.grab.clone().invert()).multiply(this.current);
+    } else {
+      this.target.copy(FRONT);
+    }
+    this.model.quaternion.slerp(this.target, EASE);
 
     // Draw only when something visible changed. Sensor noise moves the quaternion by ~1e-5;
     // the threshold (about 0.1°) ignores that while still tracking any real motion.
@@ -212,6 +254,10 @@ export class Controller3D {
     if (!w || !h) return;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
+    // Back off far enough that the controller fits both ways, leaving room for the overlays.
+    const halfFov = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 2;
+    const dist = Math.max(MODEL_H / FILL_H, MODEL_W / FILL_W / this.camera.aspect) / halfFov;
+    this.camera.position.copy(CAMERA_DIR).multiplyScalar(dist);
     this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);
     this.needsDraw = true;
@@ -220,7 +266,8 @@ export class Controller3D {
   private async load(): Promise<void> {
     const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(MODEL_URL);
     // Build everything with the model unrotated, so world space equals model space while we
-    // measure parts. update() re-applies the orientation on the next snapshot.
+    // measure parts, then put it back.
+    const pose = this.model.quaternion.clone();
     this.model.quaternion.identity();
     this.model.add(gltf.scene);
     this.model.updateMatrixWorld(true);
@@ -252,6 +299,7 @@ export class Controller3D {
       if (pad) this.fingers[side] = this.addFinger(pad.pivot);
     }
 
+    this.model.quaternion.copy(pose);
     this.ready = true;
     this.needsDraw = true;
     this.renderer.render(this.scene, this.camera);

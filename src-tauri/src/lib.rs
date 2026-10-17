@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 
 use sc_core::hub::{self, HubOptions};
 use sc_core::protocol::{self, BatteryStatus, Report};
-use sc_core::{ControllerState, HubEvent};
+use sc_core::{Command, ControllerState, Hub, HubEvent};
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
 const EMIT_INTERVAL: Duration = Duration::from_millis(16);
@@ -58,10 +58,16 @@ struct UnknownReport {
     data: Vec<u8>,
 }
 
-fn forward_events(app: AppHandle) {
-    let (tx, rx) = mpsc::channel();
-    hub::spawn(tx, HubOptions::default());
+/// Ask the controller on `slot` (as in the snapshot) to power off.
+#[tauri::command]
+async fn turn_off_controller(slot: String, hub: State<'_, Hub>) -> Result<(), String> {
+    let (reply, rx) = mpsc::channel();
+    hub.send(&slot, Command::TurnOff { reply })?;
+    rx.recv_timeout(Duration::from_secs(2))
+        .map_err(|_| "The controller did not respond".to_string())?
+}
 
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
@@ -115,9 +121,13 @@ fn forward_events(app: AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![turn_off_controller])
         .setup(|app| {
+            let (tx, rx) = mpsc::channel();
+            app.manage(hub::spawn(tx, HubOptions::default()));
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle));
+            thread::spawn(move || forward_events(handle, rx));
             Ok(())
         })
         .run(tauri::generate_context!())

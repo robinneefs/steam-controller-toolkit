@@ -49,6 +49,33 @@ export interface Snapshot {
 /** EChargeState from SDL's controller_structs.h. */
 export const CHARGE_STATES = ["reset", "on battery", "charging", "validating source", "fully charged"];
 
+/** Connection types by USB product id (see protocol.rs). */
+export const PRODUCTS: Record<number, { name: string; short: string; dongle: boolean }> = {
+  0x1302: { name: "Steam Controller (USB)", short: "USB", dongle: false },
+  0x1303: { name: "Steam Controller (Bluetooth)", short: "Bluetooth", dongle: false },
+  0x1304: { name: "Steam Controller Puck (dongle)", short: "Puck", dongle: true },
+  0x1305: { name: "Steam Controller dongle (newer)", short: "Dongle", dongle: true },
+};
+
+/** Readable form of a hub slot id such as "1304:2" (product id : HID interface). */
+export function describeSlot(slot: string): { pid: number; iface: number; product: string; short: string; label: string } {
+  const [p, i] = slot.split(":");
+  const pid = parseInt(p, 16);
+  const iface = Number(i);
+  const known = PRODUCTS[pid];
+  // Dongle interfaces 2..=5 are its four controller slots.
+  const label = known
+    ? known.dongle && iface >= 2 ? `${known.short} · slot ${iface - 1}` : known.short
+    : slot;
+  return { pid, iface, product: known?.name ?? `Unknown product 0x${p}`, short: known?.short ?? slot, label };
+}
+
+export const REPORT_NAMES: Record<number, string> = {
+  0x42: "state + orientation",
+  0x45: "state",
+  0x47: "state + pad timestamp",
+};
+
 export function hex(bytes: number[]): string {
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
 }

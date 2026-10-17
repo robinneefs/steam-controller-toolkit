@@ -112,6 +112,21 @@ Two rules, both learned the hard way:
   coincided with the receiver dropping its slots until it was replugged. SDL behaves the same
   way. See `hub::read_loop`.
 
+### Turning the controller off
+
+The app's power button sends one more feature report, `protocol::turn_off_report()`:
+
+| Byte | Value | Meaning |
+|---|---|---|
+| 0 | `0x01` | report id |
+| 1 | `0x9F` | message type `ID_TURN_OFF_CONTROLLER` (SDL `controller_constants.h`) |
+| 2 | `4` | payload length |
+| 3..7 | `off!` | magic the original Steam Controller expects |
+
+SDL's driver for this controller never sends it, but the 2026 controller honours it (verified
+over the Puck dongle). Commands reach a controller through its interface's reader thread: the
+app calls `hub::Hub::send(slot, Command::TurnOff { .. })`, and `read_loop` runs it between reads.
+
 ## Input reports
 
 Input reports arrive on the vendor collection. **Byte 0 is the report ID**, all multi-byte
@@ -208,7 +223,7 @@ vectors from the sensor frame into a world frame whose **+Z points up**. We chec
 rotating the accelerometer reading of the captured report above with its quaternion, which
 gives ≈ (0.05, 0.06, 0.97) g, i.e. straight up. Tilt (pitch and roll) is therefore absolute.
 **Yaw has no absolute reference** (there is no magnetometer) and slowly drifts, so the 3D view
-has a *Re-center* button that zeroes it.
+has a *Re-center yaw* button that zeroes it for its angle readout.
 
 Three.js uses +Y up and +Z towards the viewer, so the 3D view maps `(x, y, z) → (x, z, −y)` for
 both vectors and the quaternion's vector part (`src/tabs/controller3d.ts`).
