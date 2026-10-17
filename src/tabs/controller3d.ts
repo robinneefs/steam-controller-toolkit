@@ -33,6 +33,11 @@ const PRESS_PARTS: [part: string, button: ButtonName, dir: THREE.Vector3][] = [
   ["back_l4", "L4", UP], ["back_l5", "L5", UP], ["back_r4", "R4", UP], ["back_r5", "R5", UP],
 ];
 
+type DpadArm = "up" | "down" | "left" | "right";
+const DPAD_ARMS: [arm: DpadArm, button: ButtonName][] = [
+  ["up", "DpadUp"], ["down", "DpadDown"], ["left", "DpadLeft"], ["right", "DpadRight"],
+];
+
 const STICK_TILT = 0.35; // rad at full deflection
 const DPAD_TILT = 0.12;
 const TRIGGER_SWING = 0.35;
@@ -142,13 +147,15 @@ export class Controller3D {
       this.glow(name, on ? GLOW.press : null, 0.6);
     }
 
-    const up = pressed(s, "DpadUp"), down = pressed(s, "DpadDown");
-    const left = pressed(s, "DpadLeft"), right = pressed(s, "DpadRight");
-    const dpad = this.parts.get("dpad");
-    if (dpad) {
-      // Rocker: the pressed arm dips. Arms point -z (up), +z (down), -x (left), +x (right).
-      dpad.pivot.rotation.set((down ? 1 : 0) * DPAD_TILT - (up ? 1 : 0) * DPAD_TILT, 0, (left ? 1 : 0) * DPAD_TILT - (right ? 1 : 0) * DPAD_TILT);
-      this.glow("dpad", up || down || left || right ? GLOW.press : null, 0.6);
+    // The D-pad is one rocker cut into four arms: all arms tilt together about the cross's centre
+    // so the pressed arm dips, and only the pressed arm lights up.
+    // Arms point -z (up), +z (down), -x (left), +x (right).
+    const arm = Object.fromEntries(DPAD_ARMS.map(([a, button]) => [a, pressed(s, button)])) as Record<DpadArm, boolean>;
+    const tiltX = ((arm.down ? 1 : 0) - (arm.up ? 1 : 0)) * DPAD_TILT;
+    const tiltZ = ((arm.left ? 1 : 0) - (arm.right ? 1 : 0)) * DPAD_TILT;
+    for (const [a] of DPAD_ARMS) {
+      this.parts.get(`dpad_${a}`)?.pivot.rotation.set(tiltX, 0, tiltZ);
+      this.glow(`dpad_${a}`, arm[a] ? GLOW.press : null, 0.6);
     }
 
     for (const side of ["left", "right"] as const) {
@@ -223,6 +230,9 @@ export class Controller3D {
     gltf.scene.traverse((o) => {
       if ((o as THREE.Mesh).isMesh && o.name.startsWith("part_")) partMeshes.push(o as THREE.Mesh);
     });
+    // The D-pad's arms share one pivot, the centre of the whole cross.
+    const dpadBox = new THREE.Box3();
+    for (const mesh of partMeshes) if (mesh.name.startsWith("part_dpad_")) dpadBox.expandByObject(mesh);
     for (const mesh of partMeshes) {
       const name = mesh.name.slice("part_".length);
       // Own material per part so its glow does not light up the rest of the details.
@@ -230,7 +240,7 @@ export class Controller3D {
       mesh.material = material;
       const box = new THREE.Box3().setFromObject(mesh);
       const pivot = new THREE.Group();
-      pivot.position.copy(pivotFor(name, box));
+      pivot.position.copy(name.startsWith("dpad_") ? dpadBox.getCenter(new THREE.Vector3()) : pivotFor(name, box));
       mesh.parent!.add(pivot);
       pivot.updateMatrixWorld(true);
       pivot.attach(mesh); // keeps the mesh where it is, now rotating about the pivot

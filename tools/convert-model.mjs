@@ -10,7 +10,14 @@
 //
 // Output: node "steam_controller" with children "body", "details" (screws, port, LED) and one
 // "part_<name>" node per input (names in PARTS). Positions are in cm, centred on the body.
+// The D-pad is cut into four arms by Blender (tools/split-dpad.py): "part_dpad_up", "_down",
+// "_left" and "_right". Blender is found via $BLENDER, the usual install paths, or PATH.
 
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Document, NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from "@gltf-transform/extensions";
 import { compactPrimitive, prune, quantize, reorder, textureCompress } from "@gltf-transform/functions";
@@ -118,6 +125,13 @@ top.addChild(doc.createNode("body").setMesh(doc.createMesh("body").addPrimitive(
 top.addChild(doc.createNode("details").setMesh(doc.createMesh("details").addPrimitive(primWithIndices(detailsPrim, leftover))));
 for (const name of Object.keys(PARTS)) {
   const prim = primWithIndices(detailsPrim, byPart.get(name));
+  if (name === "dpad") {
+    for (const [arm, armPrim] of await splitDpad(prim)) {
+      top.addChild(doc.createNode(`part_dpad_${arm}`).setMesh(doc.createMesh(`part_dpad_${arm}`).addPrimitive(armPrim)));
+    }
+    prim.dispose();
+    continue;
+  }
   top.addChild(doc.createNode(`part_${name}`).setMesh(doc.createMesh(`part_${name}`).addPrimitive(prim)));
 }
 const scene = root.listScenes()[0];
@@ -153,6 +167,59 @@ console.log(`textures: ${root.listTextures().map((t) => `${t.getMimeType()} ${t.
 console.log(`wrote ${output}: ${tris} triangles, ${(size / 1024 / 1024).toFixed(2)} MB`);
 
 // --- helpers --------------------------------------------------------------------------------
+
+/** Cut the D-pad primitive into its four arms with Blender; returns [arm, primitive] pairs. */
+async function splitDpad(prim) {
+  const dir = mkdtempSync(join(tmpdir(), "dpad-"));
+  try {
+    const out = new Document();
+    const outBuffer = out.createBuffer();
+    const outPrim = out.createPrimitive().setIndices(out.createAccessor().setType("SCALAR").setArray(prim.getIndices().getArray()).setBuffer(outBuffer));
+    for (const sem of ["POSITION", "NORMAL", "TEXCOORD_0"]) {
+      const a = prim.getAttribute(sem);
+      outPrim.setAttribute(sem, out.createAccessor().setType(a.getType()).setArray(a.getArray()).setNormalized(a.getNormalized()).setBuffer(outBuffer));
+    }
+    out.createScene().addChild(out.createNode("dpad").setMesh(out.createMesh("dpad").addPrimitive(outPrim)));
+    const inPath = join(dir, "dpad.glb");
+    const armsPath = join(dir, "arms.glb");
+    await io.write(inPath, out);
+
+    const script = fileURLToPath(new URL("./split-dpad.py", import.meta.url));
+    execFileSync(findBlender(), ["-b", "--factory-startup", "--python", script, "--", inPath, armsPath], { stdio: ["ignore", "ignore", "inherit"] });
+
+    const arms = await io.read(armsPath);
+    const result = [];
+    for (const node of arms.getRoot().listNodes()) {
+      const armPrim = node.getMesh()?.listPrimitives()[0];
+      if (!armPrim) continue;
+      const p = doc.createPrimitive().setMaterial(prim.getMaterial());
+      p.setIndices(doc.createAccessor().setType("SCALAR").setArray(new Uint32Array(armPrim.getIndices().getArray())).setBuffer(buffer));
+      for (const sem of ["POSITION", "NORMAL", "TEXCOORD_0"]) {
+        const a = armPrim.getAttribute(sem);
+        if (!a) throw new Error(`Blender output lacks ${sem}`);
+        p.setAttribute(sem, doc.createAccessor().setType(a.getType()).setArray(a.getArray().slice()).setBuffer(buffer));
+      }
+      result.push([node.getName().replace(/^dpad_/, ""), p]);
+    }
+    const names = result.map(([n]) => n).sort().join(",");
+    if (names !== "down,left,right,up") throw new Error(`unexpected D-pad arms from Blender: ${names}`);
+    return result;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function findBlender() {
+  if (process.env.BLENDER) return process.env.BLENDER;
+  const candidates = [];
+  const win = "C:/Program Files/Blender Foundation";
+  if (existsSync(win)) {
+    const versions = readdirSync(win).filter((d) => d.startsWith("Blender")).sort().reverse();
+    candidates.push(...versions.map((d) => `${win}/${d}/blender.exe`));
+  }
+  candidates.push("/Applications/Blender.app/Contents/MacOS/Blender");
+  return candidates.find((c) => existsSync(c)) ?? "blender";
+}
 
 /** Triangle index lists of each connected component, welding vertices by position. */
 function connectedIslands(pos, idx) {

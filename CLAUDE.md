@@ -66,7 +66,9 @@ Regenerate with
 `node tools/convert-model.mjs <steam_machine__controller.glb> public/models/steam-controller.glb`.
 The script splits the controller's details mesh into connected pieces and names them
 `part_<name>` (matched by position via `PARTS`); `controller3d.ts` gives each a pivot and
-moves it from live input. Keep it light: one model, 1024px WebP textures, on-demand rendering
+moves it from live input. The D-pad is then cut along its diagonals into `part_dpad_up/down/left/right`
+by headless Blender (`tools/split-dpad.py`; found via `$BLENDER`, the default install paths or
+PATH), so each arm lights up on its own; the arms share one pivot and tilt together as a rocker. Keep it light: one model, 1024px WebP textures, on-demand rendering
 (draws only when orientation/inputs change), pixel ratio capped at 1.5, nothing drawn while the
 window is hidden. Append `#demo` to the page URL to cycle every input without a controller.
 

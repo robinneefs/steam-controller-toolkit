@@ -74,7 +74,7 @@ npm run probe -- --raw --seconds 10
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
 | `src-tauri` | Tauri backend: runs the device layer and streams snapshots to the UI |
 | `src` | TypeScript frontend: tab shell and the Visualizer |
-| `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
+| `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file (needs Blender for `tools/split-dpad.py`) |
 | `third_party/hidapi` | hidapi 2.6.7 with a one-line fix (see `docs/PROTOCOL.md`) |
 | `docs/PROTOCOL.md` | How the app and the controller communicate |
 

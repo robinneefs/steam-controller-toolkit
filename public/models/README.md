@@ -7,7 +7,8 @@ by [dark_igorek](https://sketchfab.com/dark_igorek)**, licensed under
 
 **Changes made** (`tools/convert-model.mjs`): only the controller was kept (the Steam Machine
 was removed), the model was scaled to centimetres and centred, its buttons, sticks, trackpads,
-triggers and back buttons were split into separate parts so they can move, unused vertex data
+triggers and back buttons were split into separate parts so they can move, the D-pad was cut
+into its four arms so each can light up, unused vertex data
 was removed, textures were re-encoded as WebP, and the geometry was quantized and compressed.
 
 This adapted model is also shared under CC BY 4.0; see `LICENSE.txt`. dark_igorek does not
