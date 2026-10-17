@@ -1,0 +1,9 @@
+[package]
+name = "sc-core"
+version = "0.1.0"
+edition = "2021"
+description = "Device layer for the 2026 Steam Controller: HID discovery, configuration and report parsing"
+
+[dependencies]
+hidapi = "2"
+serde = { version = "1", features = ["derive"] }

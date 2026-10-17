@@ -1,0 +1,55 @@
+import { onSnapshot, type Snapshot } from "./controller";
+import type { Tab } from "./tabs/tab";
+import { VisualizerTab } from "./tabs/visualizer";
+
+// Register new tools here; each becomes a tab.
+const tabs: Tab[] = [new VisualizerTab()];
+
+const nav = document.querySelector<HTMLElement>("#tabs")!;
+const content = document.querySelector<HTMLElement>("#tab-content")!;
+const status = document.querySelector<HTMLElement>("#status")!;
+
+const panes = new Map<string, HTMLElement>();
+let active: Tab = tabs[0];
+
+function show(tab: Tab): void {
+  active = tab;
+  if (!panes.has(tab.id)) {
+    const pane = document.createElement("div");
+    pane.className = "pane";
+    content.appendChild(pane);
+    tab.mount(pane);
+    panes.set(tab.id, pane);
+  }
+  for (const [id, pane] of panes) pane.hidden = id !== tab.id;
+  nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab.id));
+}
+
+for (const tab of tabs) {
+  const b = document.createElement("button");
+  b.textContent = tab.title;
+  b.dataset.tab = tab.id;
+  b.addEventListener("click", () => show(tab));
+  nav.appendChild(b);
+}
+show(active);
+
+function renderStatus(snap: Snapshot): void {
+  if (!snap.state) {
+    status.textContent = "Searching for controller…";
+    status.className = "status";
+    return;
+  }
+  const parts = [`Connected · ${snap.slot}`, `${snap.report_rate} Hz`];
+  if (snap.battery) parts.push(`battery ${snap.battery.level}%`);
+  if (snap.unknown_reports.length) {
+    parts.push(`unknown reports: ${snap.unknown_reports.map((id) => "0x" + id.toString(16)).join(", ")}`);
+  }
+  status.textContent = parts.join(" · ");
+  status.className = "status connected";
+}
+
+onSnapshot((snap) => {
+  renderStatus(snap);
+  active.update?.(snap);
+});

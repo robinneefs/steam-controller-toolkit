@@ -1,0 +1,20 @@
+[package]
+name = "steam-controller-app"
+version = "0.1.0"
+description = "Steam Controller toolkit: live input visualizer and more"
+authors = ["Robin Neefs"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix avoids a lib/bin name clash on Windows: https://github.com/rust-lang/cargo/issues/8519
+name = "steam_controller_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sc-core = { path = "../crates/sc-core" }
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

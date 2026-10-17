@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["crates/sc-core", "src-tauri"]
+
+# Size optimisations for release bundles: https://tauri.app/concept/size/
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
