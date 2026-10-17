@@ -62,6 +62,9 @@ export class VisualizerTab implements Tab {
             <span data-angles></span>
             <button data-recenter title="Make the current heading straight ahead">Re-center</button>
           </div>
+          <div class="view3d-credit" title="Simplified from Valve's CAD release. Not affiliated with or endorsed by Valve.">
+            3D model © 2026 Valve Corporation · CC BY-NC-SA 4.0 · simplified
+          </div>
         </section>
         <section class="panel graphs">
           <div data-graph="gyro"></div>

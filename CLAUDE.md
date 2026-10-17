@@ -50,6 +50,17 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
   +Z out of the face. Three.js mapping is (x, y, z) -> (x, z, -y). Yaw drifts / has no absolute
   reference; the visualizer's Re-center button zeroes it.
 
+## 3D model
+
+`public/models/steam-controller.glb` comes from Valve's CAD release (CC BY-NC-SA 4.0: credit
+Valve, non-commercial only, share-alike; see `public/models/README.md`). Keep the credit line
+in the 3D view. Regenerate with
+`node tools/convert-model.mjs <sc_solid_stl_*.stl> public/models/steam-controller.glb`.
+The shell is one solid, so live highlights are overlays placed by ray casts at positions
+measured from Valve's 2:1 reference drawing (`BUTTONS`, `STICKS`, `PADS`, `TRIGGERS` in
+`src/tabs/controller3d.ts`). Check them with `#show-controls`, `#show-controls-top` or
+`#show-controls-bottom` appended to the page URL.
+
 ## HID enumeration must stay filtered
 
 Never enumerate all HID devices (`HidApi::new()` with discovery on, `refresh_devices()`,

@@ -1,16 +1,56 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { pressed, type ButtonName, type ControllerState } from "../controller";
+
+/** Valve's shell model, converted by tools/convert-model.mjs (CC BY-NC-SA 4.0, (c) Valve). */
+const MODEL_URL = "/models/steam-controller.glb";
 
 const QUAT_SCALE = 32767;
 const AXIS = 32768;
 
 const COLORS = {
-  body: 0x2a2f36,
-  part: 0x3b424c,
+  shell: 0x2b3038,
   on: 0x3fa9f5,
   touch: 0x4cc38a,
   finger: 0xf5a63f,
 };
+
+/**
+ * Control positions in model space (cm; +x right, +y out of the face, +z towards the player,
+ * origin at the bounding-box centre). Measured from Valve's 2:1 reference drawing
+ * (steam_controller_reference_20260429.pdf): x/z from the top and bottom views, y from the
+ * front view. At load each point is projected onto the shell by a ray cast along `from`.
+ */
+type Probe = { x: number; y?: number; z: number; from: "top" | "bottom" | "front"; r: number };
+const BUTTONS: Partial<Record<ButtonName, Probe>> = {
+  DpadUp: { x: -5.48, z: -3.6, from: "top", r: 0.3 },
+  DpadDown: { x: -5.48, z: -2.56, from: "top", r: 0.3 },
+  DpadLeft: { x: -6.0, z: -3.08, from: "top", r: 0.3 },
+  DpadRight: { x: -4.96, z: -3.08, from: "top", r: 0.3 },
+  Y: { x: 4.79, z: -4.03, from: "top", r: 0.38 },
+  X: { x: 3.81, z: -3.08, from: "top", r: 0.38 },
+  B: { x: 5.7, z: -3.08, from: "top", r: 0.38 },
+  A: { x: 4.79, z: -2.14, from: "top", r: 0.38 },
+  View: { x: -2.95, z: -4.25, from: "top", r: 0.3 },
+  Menu: { x: 2.84, z: -4.25, from: "top", r: 0.3 },
+  Steam: { x: -0.19, z: -2.99, from: "top", r: 0.45 },
+  QAM: { x: 0, z: 1.08, from: "top", r: 0.3 },
+  L: { x: -4.0, y: -1.07, z: 0, from: "front", r: 0.55 },
+  R: { x: 4.0, y: -1.07, z: 0, from: "front", r: 0.55 },
+  L4: { x: -4.19, z: 1.08, from: "bottom", r: 0.5 },
+  L5: { x: -4.73, z: 3.28, from: "bottom", r: 0.5 },
+  R4: { x: 4.22, z: 1.08, from: "bottom", r: 0.5 },
+  R5: { x: 4.98, z: 3.28, from: "bottom", r: 0.5 },
+};
+const STICKS = { left: { x: -2.52, z: -1.92 }, right: { x: 2.39, z: -2.08 } };
+const STICK_RADIUS = 0.6;
+const PADS = { left: { x: -3.21, z: 1.08 }, right: { x: 3.18, z: 1.08 } };
+const PAD_HALF = 1.45;
+const TRIGGERS = { left: { x: -4.0, y: -2.65 }, right: { x: 4.0, y: -2.65 } };
+
+type Side = "left" | "right";
 
 /**
  * 3D model of the controller, oriented by the quaternion the controller computes itself.
@@ -29,33 +69,36 @@ export class Controller3D {
   private yawRef = new THREE.Quaternion();
   private current = new THREE.Quaternion();
   private needsRecenter = true;
+  private ready = false;
+
   private buttons = new Map<ButtonName, THREE.Mesh>();
-  private sticks: Record<"left" | "right", THREE.Group> = { left: new THREE.Group(), right: new THREE.Group() };
-  private pads: Record<"left" | "right", { pad: THREE.Mesh; finger: THREE.Mesh }>;
-  private triggers: Record<"left" | "right", THREE.Group> = { left: new THREE.Group(), right: new THREE.Group() };
+  // Filled in after the model loads; a control whose ray missed the shell stays absent.
+  private sticks: Partial<Record<Side, { ring: THREE.Mesh; dot: THREE.Mesh; base: THREE.Vector3 }>> = {};
+  private pads: Partial<Record<Side, { area: THREE.Mesh; finger: THREE.Mesh }>> = {};
+  private triggers: Partial<Record<Side, THREE.Mesh>> = {};
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(this.renderer.domElement);
 
-    this.camera.position.set(0, 11, 22);
-    this.camera.lookAt(0, 0, 0);
-    this.scene.add(new THREE.HemisphereLight(0xdde6f0, 0x20242a, 2.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 2);
-    sun.position.set(4, 10, 8);
-    this.scene.add(sun);
+    this.camera.position.set(0, 13, 21);
+    this.camera.lookAt(0, -1, 0);
+    this.scene.add(new THREE.HemisphereLight(0xdde6f0, 0x20242a, 2.0));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(5, 12, 9);
+    const rim = new THREE.DirectionalLight(0x9fc4ff, 1.2);
+    rim.position.set(-8, 4, -10);
+    this.scene.add(key, rim);
 
     const grid = new THREE.GridHelper(30, 30, 0x2c333d, 0x1e232a);
-    grid.position.y = -4;
+    grid.position.y = -5.5;
     this.scene.add(grid);
-
-    this.pads = { left: this.buildPad(-4.4), right: this.buildPad(4.4) };
-    this.buildBody();
     this.scene.add(this.model);
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    this.load().catch((e) => console.error("failed to load controller model", e));
   }
 
   /** Make the current heading the new "straight ahead". */
@@ -80,33 +123,57 @@ export class Controller3D {
       }
       this.model.quaternion.copy(this.yawRef).invert().multiply(this.current);
     }
+    this.applyCalibrationView();
 
-    for (const [name, mesh] of this.buttons) {
-      (mesh.material as THREE.MeshStandardMaterial).color.setHex(pressed(s, name) ? COLORS.on : COLORS.part);
-    }
+    if (this.ready) {
+      // Calibration aid: open the page with #show-controls to light every highlight.
+      const all = location.hash.startsWith("#show-controls") ? 0.6 : 0;
+      for (const [name, mesh] of this.buttons) setLit(mesh, pressed(s, name) ? 0.9 : all, COLORS.on);
 
-    for (const side of ["left", "right"] as const) {
-      const [sx, sy] = side === "left" ? s.left_stick : s.right_stick;
-      const stick = this.sticks[side];
-      stick.rotation.set((-sy / AXIS) * 0.45, 0, (-sx / AXIS) * 0.45);
-      const touched = pressed(s, side === "left" ? "LeftStickTouch" : "RightStickTouch");
-      const clicked = pressed(s, side === "left" ? "L3" : "R3");
-      setColor(stick.children[1] as THREE.Mesh, clicked ? COLORS.on : touched ? COLORS.touch : COLORS.part);
+      for (const side of ["left", "right"] as const) {
+        const [sx, sy] = side === "left" ? s.left_stick : s.right_stick;
+        const st = this.sticks[side];
+        if (st) {
+          const touched = pressed(s, side === "left" ? "LeftStickTouch" : "RightStickTouch");
+          const clicked = pressed(s, side === "left" ? "L3" : "R3");
+          setLit(st.ring, clicked || touched ? 0.9 : 0.15, clicked ? COLORS.on : touched ? COLORS.touch : COLORS.on);
+          st.dot.position.set(st.base.x + (sx / AXIS) * STICK_RADIUS, st.base.y + 0.05, st.base.z - (sy / AXIS) * STICK_RADIUS);
+        }
 
-      const pad = side === "left" ? s.left_pad : s.right_pad;
-      const p = this.pads[side];
-      setColor(p.pad, pad.clicked ? COLORS.on : pad.touched ? COLORS.touch : COLORS.part);
-      p.finger.visible = pad.touched;
-      p.finger.position.set((pad.x / AXIS) * 1.3, 0.12, (-pad.y / AXIS) * 1.3);
-      p.finger.scale.setScalar(1 + pad.pressure / 12000);
+        const pad = side === "left" ? s.left_pad : s.right_pad;
+        const p = this.pads[side];
+        if (p) {
+          setLit(p.area, pad.clicked ? 0.55 : pad.touched ? 0.3 : all, pad.clicked ? COLORS.on : COLORS.touch);
+          p.finger.visible = pad.touched;
+          // Pad overlay lies in its local XY plane; +y local is towards the triggers.
+          p.finger.position.set((pad.x / AXIS) * PAD_HALF, (pad.y / AXIS) * PAD_HALF, 0.06);
+          p.finger.scale.setScalar(1 + pad.pressure / 12000);
+        }
 
-      const trig = (side === "left" ? s.trigger_left : s.trigger_right) / 32767;
-      this.triggers[side].rotation.x = -trig * 0.5;
-      const trigClick = pressed(s, side === "left" ? "LeftTriggerClick" : "RightTriggerClick");
-      setColor(this.triggers[side].children[0] as THREE.Mesh, trigClick ? COLORS.on : trig > 0.02 ? COLORS.touch : COLORS.part);
+        const trig = (side === "left" ? s.trigger_left : s.trigger_right) / 32767;
+        const trigClick = pressed(s, side === "left" ? "LeftTriggerClick" : "RightTriggerClick");
+        setLit(this.triggers[side], trig > 0.02 ? 0.25 + trig * 0.65 : all, trigClick ? COLORS.on : COLORS.touch);
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Calibration aid for the BUTTONS/STICKS/PADS positions: `#show-controls` lights every
+   * highlight; adding `-top` or `-bottom` shows the unrotated model straight from above/below
+   * to compare with Valve's reference drawing.
+   */
+  private applyCalibrationView(): void {
+    const view = location.hash.match(/^#show-controls-(top|bottom)$/)?.[1];
+    if (!view) {
+      this.camera.position.set(0, 13, 21);
+      this.camera.lookAt(0, -1, 0);
+      return;
+    }
+    this.model.quaternion.identity();
+    this.camera.position.set(0, view === "top" ? 24 : -24, 0.001);
+    this.camera.lookAt(0, 0, 0);
   }
 
   private resize(): void {
@@ -118,127 +185,118 @@ export class Controller3D {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // --- model construction. Units ≈ cm. Face is +Y, triggers at -Z, player at +Z. ---
+  private async load(): Promise<void> {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const gltf = await loader.loadAsync(MODEL_URL);
+    const src = gltf.scene.getObjectByProperty("isMesh", true) as THREE.Mesh;
+    src.updateWorldMatrix(true, false);
 
-  private buildBody(): void {
-    const shape = roundedRect(17, 7, 2.2);
-    const body = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(shape, { depth: 1.6, bevelEnabled: true, bevelSize: 0.3, bevelThickness: 0.3, bevelSegments: 3 }),
-      material(COLORS.body),
-    );
-    body.rotation.x = -Math.PI / 2;
-    body.position.y = -1.6;
-    this.model.add(body);
+    // Positions are quantized (normalized int16 in -1..1, scaled by the node transform). Copy
+    // them to floats before baking the transform, or applyMatrix4 clamps them back to -1..1.
+    const q = src.geometry.getAttribute("position");
+    const floats = new Float32Array(q.count * 3);
+    for (let i = 0; i < q.count; i++) {
+      floats[i * 3] = q.getX(i);
+      floats[i * 3 + 1] = q.getY(i);
+      floats[i * 3 + 2] = q.getZ(i);
+    }
+    const base = new THREE.BufferGeometry();
+    base.setAttribute("position", new THREE.BufferAttribute(floats, 3));
+    base.setIndex(src.geometry.getIndex());
+    base.applyMatrix4(src.matrixWorld);
+    // Smooth normals except across sharp edges.
+    const geo = toCreasedNormals(base, THREE.MathUtils.degToRad(35));
+    const shell = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: COLORS.shell, roughness: 0.72, metalness: 0.05 }));
+    this.model.add(shell);
+    // Ray hits come back in world space; place everything with the model unrotated so world
+    // equals model space. update() re-applies the orientation on the next snapshot.
+    this.model.quaternion.identity();
+    this.model.updateMatrixWorld(true);
 
-    for (const side of [-1, 1]) {
-      const grip = new THREE.Mesh(new THREE.CapsuleGeometry(1.5, 3.5, 6, 16), material(COLORS.body));
-      grip.position.set(side * 6.6, -1.8, 2.6);
-      grip.rotation.set(-Math.PI / 2.6, 0, side * 0.25);
-      this.model.add(grip);
+    const ray = new THREE.Raycaster();
+    const hit = (origin: THREE.Vector3, dir: THREE.Vector3) => {
+      ray.set(origin, dir);
+      return ray.intersectObject(shell, false)[0];
+    };
+    const surface = (p: Probe) => {
+      const h =
+        p.from === "top" ? hit(new THREE.Vector3(p.x, 20, p.z), new THREE.Vector3(0, -1, 0))
+        : p.from === "bottom" ? hit(new THREE.Vector3(p.x, -20, p.z), new THREE.Vector3(0, 1, 0))
+        : hit(new THREE.Vector3(p.x, p.y ?? 0, -20), new THREE.Vector3(0, 0, 1));
+      if (!h?.face) return undefined;
+      return { point: h.point, normal: h.face.normal.clone().normalize() };
+    };
+
+    for (const [name, probe] of Object.entries(BUTTONS) as [ButtonName, Probe][]) {
+      const s = surface(probe);
+      if (!s) continue;
+      const disc = decal(new THREE.CircleGeometry(probe.r, 32), s.point, s.normal);
+      this.buttons.set(name, disc);
+      this.model.add(disc);
     }
 
-    const top = 0.3;
-    this.addButton("DpadUp", box(0.55, 0.3, 0.8), -7, top, -1.8);
-    this.addButton("DpadDown", box(0.55, 0.3, 0.8), -7, top, -0.2);
-    this.addButton("DpadLeft", box(0.8, 0.3, 0.55), -7.8, top, -1);
-    this.addButton("DpadRight", box(0.8, 0.3, 0.55), -6.2, top, -1);
-    this.addButton("Y", sphere(0.42), 7, top, -1.9);
-    this.addButton("A", sphere(0.42), 7, top, -0.1);
-    this.addButton("X", sphere(0.42), 6.1, top, -1);
-    this.addButton("B", sphere(0.42), 7.9, top, -1);
-    this.addButton("View", box(0.6, 0.2, 0.35), -1.2, top, -2.2);
-    this.addButton("Menu", box(0.6, 0.2, 0.35), 1.2, top, -2.2);
-    this.addButton("Steam", box(0.9, 0.2, 0.5), 0, top, 0.6);
-    this.addButton("QAM", box(0.6, 0.2, 0.35), 0, top, 1.5);
+    for (const side of ["left", "right"] as const) {
+      const st = surface({ ...STICKS[side], from: "top", r: 0 });
+      if (st) {
+        const ring = decal(new THREE.RingGeometry(STICK_RADIUS + 0.12, STICK_RADIUS + 0.28, 48), st.point, new THREE.Vector3(0, 1, 0));
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.finger }));
+        dot.position.copy(st.point);
+        this.sticks[side] = { ring, dot, base: st.point.clone() };
+        this.model.add(ring, dot);
+      }
 
-    for (const [side, x] of [["left", -3.6], ["right", 3.6]] as const) {
-      const stick = this.sticks[side];
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.8, 16), material(COLORS.part));
-      shaft.position.y = 0.4;
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.8, 0.35, 32), material(COLORS.part));
-      cap.position.y = 0.9;
-      stick.add(shaft, cap);
-      stick.position.set(x, 0, -1.4);
-      this.model.add(stick);
+      // Fit the pad plane from three surface points, then lay a square overlay on it.
+      const c = surface({ ...PADS[side], from: "top", r: 0 });
+      const px = surface({ x: PADS[side].x + 1, z: PADS[side].z, from: "top", r: 0 });
+      const pz = surface({ x: PADS[side].x, z: PADS[side].z - 1, from: "top", r: 0 });
+      if (c && px && pz) {
+        const ax = px.point.clone().sub(c.point).normalize();
+        const ay = pz.point.clone().sub(c.point).normalize(); // towards the triggers
+        const n = new THREE.Vector3().crossVectors(ax, ay).normalize();
+        const frame = new THREE.Group();
+        frame.matrix.makeBasis(ax, ay, n).setPosition(c.point.clone().addScaledVector(n, 0.03));
+        frame.matrixAutoUpdate = false;
+        const area = new THREE.Mesh(new THREE.PlaneGeometry(PAD_HALF * 2, PAD_HALF * 2), overlayMaterial());
+        const finger = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.finger }));
+        finger.visible = false;
+        frame.add(area, finger);
+        this.pads[side] = { area, finger };
+        this.model.add(frame);
+      }
+
+      const tr = surface({ ...TRIGGERS[side], z: 0, from: "front", r: 0 });
+      if (tr) {
+        this.triggers[side] = decal(new THREE.CircleGeometry(0.6, 32), tr.point, tr.normal);
+        this.model.add(this.triggers[side]);
+      }
     }
 
-    // Shoulder buttons and triggers on the back edge; triggers pivot down when pulled.
-    for (const [side, x] of [["left", -5.6], ["right", 5.6]] as const) {
-      this.addButton(side === "left" ? "L" : "R", box(2.6, 0.5, 0.7), x, -0.4, -3.9);
-      const trigger = this.triggers[side];
-      const blade = new THREE.Mesh(box(2.2, 0.6, 1.4), material(COLORS.part));
-      blade.position.set(0, 0, -0.7);
-      trigger.add(blade);
-      trigger.position.set(x, -1.3, -3.6);
-      this.model.add(trigger);
-    }
-
-    // Back buttons on the underside of the grips: 4 upper, 5 lower.
-    this.addButton("L4", box(0.8, 0.25, 1.6), -6.0, -2.75, 0.4);
-    this.addButton("L5", box(0.8, 0.25, 1.6), -6.6, -3.45, 2.4);
-    this.addButton("R4", box(0.8, 0.25, 1.6), 6.0, -2.75, 0.4);
-    this.addButton("R5", box(0.8, 0.25, 1.6), 6.6, -3.45, 2.4);
+    this.ready = true;
+    this.renderer.render(this.scene, this.camera);
   }
+}
 
-  private buildPad(x: number): { pad: THREE.Mesh; finger: THREE.Mesh } {
-    const pad = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(roundedRect(3, 3, 0.6), { depth: 0.12, bevelEnabled: false }),
-      material(COLORS.part),
-    );
-    pad.rotation.x = -Math.PI / 2;
-    const group = new THREE.Group();
-    group.position.set(x, 0.32, 1.7);
-    group.add(pad);
-    const finger = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 12), material(COLORS.finger));
-    finger.visible = false;
-    group.add(finger);
-    this.model.add(group);
-    return { pad, finger };
-  }
+/** A flat highlight lying on the shell at `point`, facing along `normal`. Invisible until lit. */
+function decal(geo: THREE.BufferGeometry, point: THREE.Vector3, normal: THREE.Vector3): THREE.Mesh {
+  const mesh = new THREE.Mesh(geo, overlayMaterial());
+  mesh.position.copy(point).addScaledVector(normal, 0.03);
+  mesh.lookAt(point.clone().addScaledVector(normal, 1));
+  return mesh;
+}
 
-  private addButton(name: ButtonName, geo: THREE.BufferGeometry, x: number, y: number, z: number): void {
-    const mesh = new THREE.Mesh(geo, material(COLORS.part));
-    mesh.position.set(x, y, z);
-    this.model.add(mesh);
-    this.buttons.set(name, mesh);
-  }
+function overlayMaterial(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({ color: COLORS.on, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+}
+
+function setLit(mesh: THREE.Mesh | undefined, opacity: number, color: number): void {
+  if (!mesh) return;
+  const m = mesh.material as THREE.MeshBasicMaterial;
+  m.opacity = opacity;
+  m.color.setHex(color);
 }
 
 /** Heading of a three.js orientation: rotation about +Y of its forward (-Z) axis. */
 function headingOf(q: THREE.Quaternion): number {
   const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
   return Math.atan2(-f.x, -f.z);
-}
-
-function material(color: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05 });
-}
-
-function setColor(mesh: THREE.Mesh, color: number): void {
-  (mesh.material as THREE.MeshStandardMaterial).color.setHex(color);
-}
-
-function box(w: number, h: number, d: number): THREE.BufferGeometry {
-  return new THREE.BoxGeometry(w, h, d);
-}
-
-function sphere(r: number): THREE.BufferGeometry {
-  return new THREE.SphereGeometry(r, 20, 14);
-}
-
-/** Rounded rectangle centred on the origin, in the XY plane. */
-function roundedRect(w: number, h: number, r: number): THREE.Shape {
-  const x = -w / 2;
-  const y = -h / 2;
-  const s = new THREE.Shape();
-  s.moveTo(x + r, y);
-  s.lineTo(x + w - r, y);
-  s.quadraticCurveTo(x + w, y, x + w, y + r);
-  s.lineTo(x + w, y + h - r);
-  s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  s.lineTo(x + r, y + h);
-  s.quadraticCurveTo(x, y + h, x, y + h - r);
-  s.lineTo(x, y + r);
-  s.quadraticCurveTo(x, y, x + r, y);
-  return s;
 }

@@ -146,6 +146,14 @@ body { margin: 0; display: flex; flex-direction: column; background: var(--bg); 
   cursor: pointer;
 }
 .view3d-overlay button:hover { border-color: var(--accent); }
+.view3d-credit {
+  position: absolute;
+  left: 10px;
+  bottom: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.8;
+}
 
 /* ---------- Graphs ---------- */
 
