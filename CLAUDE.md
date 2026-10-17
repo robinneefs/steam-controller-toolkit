@@ -3,6 +3,11 @@
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab. First tab: a live input visualizer.
 
+Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
+generated from it with `npx tauri icon assets/logo.png` (delete the android/ios folders after);
+`public/logo.png` is the in-app/favicon copy. Code is MIT (`LICENSE`); the protocol is
+documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`.
+
 ## Stack
 
 - **Tauri 2**: Rust backend + vanilla TypeScript/Vite frontend (no framework).

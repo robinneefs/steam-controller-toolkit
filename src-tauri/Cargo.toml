@@ -2,7 +2,7 @@
 name = "steam-controller-app"
 version = "0.1.0"
 description = "Steam Controller toolkit: live input visualizer and more"
-authors = ["Robin Neefs"]
+authors = ["GGenie"]
 edition = "2024"
 
 [lib]
