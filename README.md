@@ -14,10 +14,13 @@ Tools for the 2026 Steam Controller, one tab each. Runs on Windows, macOS and Li
 
 ## Credits
 
-The 3D controller model is derived from the Steam Controller CAD files © 2026 Valve Corporation,
-released under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) (see
-`public/models/`). This project is not affiliated with or endorsed by Valve, and builds that
-include the model must not be used commercially.
+The 3D controller model is adapted from
+["Steam Machine + Controller"](https://sketchfab.com/3d-models/steam-machine-controller-c1fcf77d71984c11818a5e2412816705)
+by [dark_igorek](https://sketchfab.com/dark_igorek), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). We extracted the controller, split
+its inputs into moving parts and compressed it; see `public/models/` for details.
+
+This project is not affiliated with or endorsed by Valve or the model's author.
 
 ## Probe
 

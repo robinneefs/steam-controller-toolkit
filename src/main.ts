@@ -60,6 +60,8 @@ function renderSteamWarning(snap: Snapshot): void {
 }
 
 onSnapshot((snap) => {
+  // Nothing is visible while the window is minimised or hidden; skip all drawing.
+  if (document.hidden) return;
   renderStatus(snap);
   renderSteamWarning(snap);
   active.update?.(snap);

@@ -52,14 +52,18 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
 
 ## 3D model
 
-`public/models/steam-controller.glb` comes from Valve's CAD release (CC BY-NC-SA 4.0: credit
-Valve, non-commercial only, share-alike; see `public/models/README.md`). Keep the credit line
-in the 3D view. Regenerate with
-`node tools/convert-model.mjs <sc_solid_stl_*.stl> public/models/steam-controller.glb`.
-The shell is one solid, so live highlights are overlays placed by ray casts at positions
-measured from Valve's 2:1 reference drawing (`BUTTONS`, `STICKS`, `PADS`, `TRIGGERS` in
-`src/tabs/controller3d.ts`). Check them with `#show-controls`, `#show-controls-top` or
-`#show-controls-bottom` appended to the page URL.
+`public/models/steam-controller.glb` is adapted from "Steam Machine + Controller" by
+dark_igorek (Sketchfab, CC BY 4.0). **Attribution is a license requirement**: keep the credit
+line in the 3D view, `public/models/README.md` + `LICENSE.txt`, and the README credits, and
+credit dark_igorek anywhere the model is shown or shipped (about screens, store pages, docs).
+
+Regenerate with
+`node tools/convert-model.mjs <steam_machine__controller.glb> public/models/steam-controller.glb`.
+The script splits the controller's details mesh into connected pieces and names them
+`part_<name>` (matched by position via `PARTS`); `controller3d.ts` gives each a pivot and
+moves it from live input. Keep it light: one model, 1024px WebP textures, on-demand rendering
+(draws only when orientation/inputs change), pixel ratio capped at 1.5, nothing drawn while the
+window is hidden. Append `#demo` to the page URL to cycle every input without a controller.
 
 ## HID enumeration must stay filtered
 

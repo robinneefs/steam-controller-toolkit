@@ -1,15 +1,14 @@
 # Steam Controller 3D model
 
-`steam-controller.glb` is derived from `sc_solid_stl_20260429.stl`, the Steam Controller shell CAD
-model released by Valve Corporation in the SteamController repository
-(https://github.com/ValveSoftware/SteamController).
+`steam-controller.glb` is adapted from
+**["Steam Machine + Controller"](https://sketchfab.com/3d-models/steam-machine-controller-c1fcf77d71984c11818a5e2412816705)
+by [dark_igorek](https://sketchfab.com/dark_igorek)**, licensed under
+[Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
 
-Copyright 2026 Valve Corporation. Licensed under Creative Commons
-Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0); see `LICENSE.txt`.
+**Changes made** (`tools/convert-model.mjs`): only the controller was kept (the Steam Machine
+was removed), the model was scaled to centimetres and centred, its buttons, sticks, trackpads,
+triggers and back buttons were split into separate parts so they can move, unused vertex data
+was removed, textures were re-encoded as WebP, and the geometry was quantized and compressed.
 
-**Changes made:** re-oriented and centred, converted from millimetres to centimetres, simplified
-from 1,577,352 to 150,000 triangles, quantized and meshopt-compressed (`tools/convert-model.mjs`).
-The modified model is shared under the same license.
-
-This project is not affiliated with or endorsed by Valve. Because of the NonCommercial term,
-builds of this app that include this model must not be sold or used commercially.
+This adapted model is also shared under CC BY 4.0; see `LICENSE.txt`. dark_igorek does not
+endorse this project.

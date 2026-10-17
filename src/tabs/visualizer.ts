@@ -62,8 +62,8 @@ export class VisualizerTab implements Tab {
             <span data-angles></span>
             <button data-recenter title="Make the current heading straight ahead">Re-center</button>
           </div>
-          <div class="view3d-credit" title="Simplified from Valve's CAD release. Not affiliated with or endorsed by Valve.">
-            3D model © 2026 Valve Corporation · CC BY-NC-SA 4.0 · simplified
+          <div class="view3d-credit" title="Adapted from sketchfab.com/3d-models/steam-machine-controller-c1fcf77d71984c11818a5e2412816705: controller extracted, split into moving parts, compressed.">
+            3D model: “Steam Machine + Controller” by dark_igorek · CC BY 4.0 · adapted
           </div>
         </section>
         <section class="panel graphs">
