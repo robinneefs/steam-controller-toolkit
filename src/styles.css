@@ -327,7 +327,9 @@ a:hover { text-decoration: underline; }
   transition: background 0.1s, color 0.1s, box-shadow 0.1s;
 }
 .cap { height: 26px; min-width: 40px; padding: 0 10px; border-radius: 8px; }
-.cap.bumper { min-width: 86px; border-radius: 13px 13px 6px 6px; }
+.bumpers { display: flex; gap: 6px; }
+.bumpers.R { flex-direction: row-reverse; }
+.cap.trigger, .cap.bumper { border-radius: 13px 13px 6px 6px; }
 .cap.grip { border-radius: 6px 6px 13px 13px; }
 .diamond { position: relative; width: 84px; height: 84px; }
 .diamond > * { position: absolute; width: 28px; height: 28px; }
