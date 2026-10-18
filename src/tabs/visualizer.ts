@@ -146,7 +146,7 @@ export class VisualizerTab implements Tab {
 
   update(snap: Snapshot): void {
     this.root.classList.toggle("disconnected", !snap.state);
-    this.q("[data-conn]").textContent = snap.state ? "Connected" : "Searching for controller…";
+    this.q("[data-conn]").textContent = snap.tape.playback ? "Replaying recording" : snap.state ? "Connected" : "Searching for controller…";
     if (snap.state) this.render(snap.state);
   }
 

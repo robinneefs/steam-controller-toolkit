@@ -44,7 +44,32 @@ export interface Snapshot {
   unknown_reports: { id: number; count: number; data: number[] }[];
   /** Steam is running; its Desktop Layout may turn controller input into mouse/keyboard input. */
   steam_running: boolean;
+  /** Recorder and player state. While a recording plays, the rest of the snapshot is replayed. */
+  tape: TapeStatus;
 }
+
+/** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */
+export interface TapeStatus {
+  recording: { name: string; seconds: number; packets: number } | null;
+  playback: { name: string; position: number; duration: number; paused: boolean; looping: boolean } | null;
+  /** Why the last recording stopped on its own, if it did. */
+  message: string | null;
+}
+
+/** A file in the recordings folder (`list_recordings`). */
+export interface RecordingInfo {
+  name: string;
+  bytes: number;
+  seconds: number;
+  /** Last modified, ms since the Unix epoch. */
+  modified: number;
+}
+
+/** Player controls for `control_playback`; mirrors `PlaybackAction` in tape.rs. */
+export type PlaybackAction =
+  | { kind: "pause" | "resume" | "stop" | "step" }
+  | { kind: "seek"; seconds: number }
+  | { kind: "loop"; on: boolean };
 
 /** EChargeState from SDL's controller_structs.h. */
 export const CHARGE_STATES = ["reset", "on battery", "charging", "validating source", "fully charged"];

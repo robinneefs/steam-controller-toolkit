@@ -2,7 +2,7 @@
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
-effect), Raw data (device facts and report bytes) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+effect), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs, rounded tiles.
 
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
@@ -19,6 +19,13 @@ links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab fr
   parsing, and the `hub` that runs one reader thread per HID interface with hot-plug.
 - **`src-tauri`**: starts the hub, folds reports into a `Snapshot`, and emits it to the UI as the
   `controller` event at ~60 Hz (the controller itself reports at ~265 Hz).
+- **Recorder**: `sc_core::recording` is the `.screc` file format (text: header line, then
+  `<seconds> <slot> <hex bytes>` per report). `src-tauri/src/tape.rs` writes every live packet
+  while recording and replays a file with its original timing. `forward_events` keeps two folds,
+  live and replay, and emits the replay one while a recording plays, so every tab shows it
+  unchanged; `Snapshot.tape` says what is recording/playing. Files live in
+  `<app data dir>/recordings` (not Documents: macOS would prompt for access). During playback
+  the power button is hidden and Haptics acts disconnected.
 - **`src/`**: `main.ts` builds the tab bar from the `tabs` array; each tab implements `Tab` in
   `src/tabs/tab.ts`. `src/controller.ts` mirrors the Rust types and must be kept in sync with
   `crates/sc-core/src/protocol.rs` and `Snapshot` in `src-tauri/src/lib.rs`.
@@ -115,4 +122,5 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 - Linux needs udev rules granting access to `hidraw` for VID 28de (Steam installs them).
 - macOS may prompt for Input Monitoring permission.
 - The window has a minimum size of 960 x 640 (`tauri.conf.json`); every tab must fit that without
-  horizontal scrolling. Tabs scroll vertically if needed, with the themed thin scrollbars.
+  horizontal scrolling. The top bar is the tightest fit: below 1100 px wide the brand shows only
+  its logo; check it with a recording and a replay running when adding tabs or top bar items. Tabs scroll vertically if needed, with the themed thin scrollbars.
