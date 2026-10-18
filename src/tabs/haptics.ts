@@ -65,7 +65,7 @@ export class HapticsTab implements Tab {
             <span class="muted">Plays on</span>
             <span class="segmented" data-sides>${SIDES.map(([l, v]) => `<button data-side="${v}">${l}</button>`).join("")}</span>
           </span>
-          ${slider({ key: "gain", label: "Strength", min: -24, max: 0, value: 0, unit: "dB", tip: "Volume of taps, scripts, tones and sweeps. 0 dB is full strength; every -6 dB halves it" })}
+          ${slider({ key: "gain", label: "Strength", min: -24, max: 0, value: -12, unit: "dB", tip: "Volume of taps, scripts, tones and sweeps. 0 dB is full strength; every -6 dB halves it" })}
           <span class="last-sent" title="Bytes of the last output report sent (click to copy)"><span class="muted">Last report</span> <code data-sent data-copy>–</code></span>
         </section>
 
