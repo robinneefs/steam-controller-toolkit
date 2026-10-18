@@ -57,6 +57,8 @@ export type MidiOutputChoice = { kind: "off" } | { kind: "virtual" } | { kind: "
 export interface MidiStatus {
   output: MidiOutputChoice;
   connected: string | null;
+  /** A port is being opened. */
+  connecting: boolean;
   error: string | null;
   /** Messages sent over the last second. */
   rate: number;

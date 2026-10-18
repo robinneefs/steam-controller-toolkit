@@ -6,7 +6,10 @@ import type { Tab } from "./tab";
 addHelp({
   "midi-output": `<b>Output</b> is the MIDI port the controller's messages go to. In your DAW, pick the same port
     as a MIDI input. The dot turns green once messages are being sent.<br><br>
-    No port listed? On Windows, create a loopback port first. The <a data-open-guide>Setup guide</a> shows how.`,
+    <b>Steam Controller</b> is the app's own port: nothing to install. On Windows it needs Windows 11 25H2 or later
+    and Windows MIDI Services. Until Microsoft's MIDI update (expected late November 2026) it's marked
+    <b>experimental</b> there: Windows makes it only once per restart. A loopback port always works; the
+    <a data-open-guide>Setup guide</a> shows how.`,
   "midi-preset": `<b>Presets</b> are complete sets of mappings and pad grids.
     <ul><li><b>Effects + drums</b>: sticks, triggers, left pad and tilt to CC 20–29; face buttons and D-pad play drums on channel 10.</li>
     <li><b>Pad instrument</b>: both pads play notes, triggers are mod wheel and expression, bumpers are sustain.</li>
@@ -171,12 +174,30 @@ function decodeOutput(v: string): MidiOutputChoice {
   return v.startsWith("port:") ? { kind: "port", name: v.slice(5) } : { kind: v as "off" | "virtual" };
 }
 
-/** Step-by-step setup for this OS: a virtual port (macOS, Linux) or a loopback port (Windows). */
-function guideHtml(virtualPort: boolean, ports: string[]): string {
+const ON_WINDOWS = navigator.userAgent.includes("Windows");
+const EXPERIMENTAL = `Experimental on this Windows: until Microsoft's MIDI update (expected late November 2026), Windows can make this
+       port only once per restart. If it says the MIDI service isn't responding, restart the PC or use a loopback port.
+       It uses Windows MIDI Services, which Microsoft still calls a preview.`;
+
+/** What this PC can do for our own port: what the backend's `MidiPorts` says. */
+interface VirtualSupport {
+  available: boolean;
+  experimental: boolean;
+  note: string | null;
+}
+
+/** Step-by-step setup: our own virtual port where this PC can have one, else a loopback port. */
+function guideHtml(v: VirtualSupport, ports: string[]): string {
   const loopback = ports.filter((p) => !/wavetable|microsoft gs/i.test(p));
-  const step1 = virtualPort
-    ? `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b>. The app makes this port itself; it goes away when the app closes.</p>`
-    : `<p>Windows can't let an app create its own MIDI port, so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>
+  const step1 = v.available && !v.experimental
+    ? `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b> (it's the default). The app makes this port
+       itself, so there's nothing to install; it goes away when the app closes.</p>
+       ${ON_WINDOWS ? `<p class="muted">On Windows this uses Windows MIDI Services.</p>` : ""}`
+    : `${v.experimental
+        ? `<p><b>Quick try:</b> pick <b>Steam Controller (experimental)</b> under <b>Output</b>. ${EXPERIMENTAL}</p>
+           <p><b>Always works:</b> a loopback port. Make one once; it passes MIDI from this app to your DAW:</p>`
+        : `<p>This PC can't give the app its own MIDI port${v.note ? ` (${escape(v.note.replace(/\.$/, ""))})` : ""},
+           so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>`}
        <ul><li><b>Windows MIDI Services</b> (in recent Windows 11): open <b>MIDI Settings</b>, go to <b>Loopback endpoints</b> and create one.</li>
        <li>Or install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.</li></ul>
        <p>Then <button class="mini" data-guide-refresh>↻ Look for ports</button> and pick it under <b>Output</b>.
@@ -224,7 +245,7 @@ export class MidiTab implements Tab {
   private preset: MidiPreset | null = null;
   private output: MidiOutputChoice = { kind: "off" };
   private ports: string[] = [];
-  private virtualPort = false;
+  private virtual: VirtualSupport = { available: false, experimental: false, note: null };
   private presets: PresetInfo[] = [];
   /** The saved or built-in preset the editor started from; `null` once it no longer matches one. */
   private loaded: PresetInfo | null = null;
@@ -356,17 +377,30 @@ export class MidiTab implements Tab {
   update(snap: Snapshot): void {
     const m = snap.midi;
     if (!m || !this.preset) return;
+    // The backend can change the output itself (first run on a PC without our own port).
+    if (encodeOutput(m.output) !== encodeOutput(this.output)) {
+      this.output = m.output;
+      this.renderOutput();
+      this.lastLog = -1;
+    }
     // Connection status.
+    const text = m.connected
+      ? `Sending to ${m.connected}`
+      : m.connecting
+        ? "Opening the port…"
+        : (m.error ?? (this.output.kind === "off" ? "Not sending: pick an output" : "Not sending"));
     const conn = m.connected
       ? `<i class="ok"></i>Sending to <b>${escape(m.connected)}</b>`
-      : m.error
-        ? `<i class="warn"></i><span title="${escape(m.error)}">${escape(m.error)}</span>`
-        : `<i></i>Not sending`;
+      : m.connecting
+        ? `<i></i>${text}`
+        : m.error
+          ? `<i class="warn"></i><span>${escape(m.error)}</span>`
+          : `<i></i>Not sending`;
     if (conn !== this.lastStatus) {
       const el = this.q("[data-conn]");
       el.innerHTML = this.lastStatus = conn;
       // The text gets cut short in narrow windows; the full status is on hover.
-      el.title = m.connected ? `Sending to ${m.connected}` : (m.error ?? "Not sending: pick an output");
+      el.title = text;
     }
     const rate = m.connected ? `${m.rate} msg/s` : "";
     const rateEl = this.q("[data-rate]");
@@ -416,18 +450,22 @@ export class MidiTab implements Tab {
   }
 
   private setupHint(): string {
+    if (this.output.kind === "virtual" && this.virtual.experimental) {
+      return `Nothing sent yet. Move a mapped control.<br><br>${EXPERIMENTAL}`;
+    }
     if (this.output.kind !== "off") return "Nothing sent yet. Move a mapped control.";
-    return this.virtualPort
-      ? `Pick <b>Steam Controller (virtual port)</b> as the output, then choose it as a MIDI input in your DAW.`
-      : `Windows needs a loopback MIDI port: create one in Windows MIDI Services (MIDI Settings → Loopback endpoints)
-         or with loopMIDI, press ↻, pick it as the output here and as a MIDI input in your DAW.
+    return this.virtual.available && !this.virtual.experimental
+      ? `Pick <b>Steam Controller (virtual port)</b> as the output, then choose it as a MIDI input in your DAW.
+         <a data-open-guide>Setup guide</a>`
+      : `This PC needs a loopback MIDI port: create one with loopMIDI (or in Windows MIDI Settings → Loopback endpoints),
+         press ↻, pick it as the output here and as a MIDI input in your DAW.
          <a data-open-guide>Setup guide</a>`;
   }
 
   private showGuide(on: boolean): void {
     const panel = this.q("[data-guide-panel]");
     if (on) {
-      panel.innerHTML = guideHtml(this.virtualPort, this.ports);
+      panel.innerHTML = guideHtml(this.virtual, this.ports);
       markGuideSeen();
     }
     panel.hidden = !on;
@@ -448,9 +486,9 @@ export class MidiTab implements Tab {
 
   private async refreshPorts(): Promise<void> {
     try {
-      const r = await invoke<{ ports: string[]; virtual_port: boolean }>("midi_ports");
+      const r = await invoke<{ ports: string[]; virtual_port: boolean; virtual_experimental: boolean; virtual_note: string | null }>("midi_ports");
       this.ports = r.ports;
-      this.virtualPort = r.virtual_port;
+      this.virtual = { available: r.virtual_port, experimental: r.virtual_experimental, note: r.virtual_note };
     } catch (e) {
       this.ports = [];
       this.flash(String(e));
@@ -460,10 +498,14 @@ export class MidiTab implements Tab {
 
   private renderOutput(): void {
     const opts: [string, string][] = [["off", "Off"]];
-    if (this.virtualPort) opts.push(["virtual", "Steam Controller (virtual port)"]);
+    if (this.virtual.available) {
+      opts.push(["virtual", this.virtual.experimental ? "Steam Controller (experimental)" : "Steam Controller (virtual port)"]);
+    }
     for (const p of this.ports) opts.push([`port:${p}`, p]);
     const current = encodeOutput(this.output);
-    if (!opts.some(([v]) => v === current) && this.output.kind === "port") opts.push([current, `${this.output.name} (not found)`]);
+    if (!opts.some(([v]) => v === current)) {
+      opts.push([current, this.output.kind === "port" ? `${this.output.name} (not found)` : "Steam Controller (not available)"]);
+    }
     const sel = this.q<HTMLSelectElement>("[data-output]");
     sel.innerHTML = opts.map(([v, l]) => `<option value="${escape(v)}">${escape(l)}</option>`).join("");
     sel.value = current;

@@ -1,13 +1,18 @@
 //! The MIDI output: which port the engine's messages go to, the preset being played, saved
 //! presets, and what the MIDI tab shows. `forward_events` feeds it every state report.
 //!
-//! macOS and Linux get a virtual port named "Steam Controller" that DAWs list as an input.
-//! Windows cannot create one with the classic MIDI API, so there the user picks an existing
-//! port, such as a loopback port made in Windows MIDI Services or loopMIDI.
+//! The app makes its own port named "Steam Controller" that DAWs list as an input: with midir
+//! on macOS and Linux, with Windows MIDI Services on Windows 11 25H2+ (`midi_win.rs`). Elsewhere
+//! the user picks an existing port, such as a loopback port made with loopMIDI.
+//!
+//! Opening a port can be slow (or hang, if the Windows MIDI service is stuck), so it happens on
+//! a thread of its own and `tick` picks up the result; the event loop never waits for it.
 
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use midir::{MidiOutput, MidiOutputConnection};
@@ -17,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::midi::{builtin_presets, Engine, Msg, Preset};
 
 const CLIENT_NAME: &str = "Steam Controller Toolkit";
+#[cfg(not(windows))]
 const VIRTUAL_PORT_NAME: &str = "Steam Controller";
 /// How often to look again for a chosen port that is missing (e.g. loopMIDI not started yet).
 const RETRY: Duration = Duration::from_secs(2);
@@ -28,7 +34,7 @@ const PRESET_EXT: &str = "json";
 pub enum OutputChoice {
     #[default]
     Off,
-    /// Our own virtual port (not on Windows).
+    /// Our own virtual port (on Windows only where Windows MIDI Services can make one).
     Virtual,
     Port { name: String },
 }
@@ -39,6 +45,8 @@ pub struct MidiStatus {
     pub output: OutputChoice,
     /// Name of the port messages are going to, if connected.
     pub connected: Option<String>,
+    /// A port is being opened.
+    pub connecting: bool,
     pub error: Option<String>,
     /// Messages sent over the last second.
     pub rate: u32,
@@ -62,9 +70,32 @@ pub struct PresetInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct MidiPorts {
     pub ports: Vec<String>,
-    /// This OS can create our own virtual port.
+    /// This PC can have our own virtual port.
     pub virtual_port: bool,
+    /// It's Windows' preview version, which works once per Windows restart: offer it as opt-in.
+    pub virtual_experimental: bool,
+    /// Why it can't, when it can't (Windows only).
+    pub virtual_note: Option<String>,
 }
+
+/// An open output.
+enum Sink {
+    Midir(MidiOutputConnection),
+    #[cfg(windows)]
+    Virtual(crate::midi_win::VirtualPort),
+}
+
+impl Sink {
+    fn send(&mut self, msg: &[u8]) -> Result<(), String> {
+        match self {
+            Sink::Midir(c) => c.send(msg).map_err(|e| e.to_string()),
+            #[cfg(windows)]
+            Sink::Virtual(p) => p.send(msg),
+        }
+    }
+}
+
+type Opened = Result<(Sink, String), String>;
 
 /// Saved between runs in `config.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -77,7 +108,12 @@ struct Config {
 pub struct MidiOut {
     engine: Engine,
     output: OutputChoice,
-    conn: Option<(MidiOutputConnection, String)>,
+    conn: Option<(Sink, String)>,
+    /// A port being opened on another thread.
+    pending: Option<mpsc::Receiver<Opened>>,
+    /// First run: the output was set to our virtual port without asking; if this PC can't have
+    /// one, quietly fall back to Off instead of showing an error.
+    auto_virtual: bool,
     error: Option<String>,
     last_try: Option<Instant>,
     dir: PathBuf,
@@ -92,14 +128,18 @@ pub struct MidiOut {
 impl MidiOut {
     /// Load the saved config from `dir` (presets go in `dir/presets`).
     pub fn new(dir: PathBuf) -> Self {
-        let config: Config = fs::read_to_string(dir.join("config.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        #[cfg(windows)]
+        crate::midi_win::init(dir.clone());
+        let saved: Option<Config> = fs::read_to_string(dir.join("config.json")).ok().and_then(|s| serde_json::from_str(&s).ok());
+        // Out of the box, send to our own port: nothing to set up but picking it in the DAW.
+        let auto_virtual = saved.is_none();
+        let config = saved.unwrap_or_else(|| Config { output: OutputChoice::Virtual, ..Default::default() });
         MidiOut {
             engine: Engine::new(config.preset),
             output: config.output,
             conn: None,
+            pending: None,
+            auto_virtual,
             error: None,
             last_try: None,
             dir,
@@ -127,12 +167,22 @@ impl MidiOut {
     pub fn ports() -> Result<MidiPorts, String> {
         let out = MidiOutput::new(CLIENT_NAME).map_err(|e| e.to_string())?;
         let ports = out.ports().iter().filter_map(|p| out.port_name(p).ok()).collect();
-        Ok(MidiPorts { ports, virtual_port: cfg!(not(windows)) })
+        #[cfg(windows)]
+        let support = crate::midi_win::available();
+        #[cfg(windows)]
+        let (virtual_experimental, virtual_note) =
+            (support == Ok(crate::midi_win::Support::Preview), support.err());
+        #[cfg(not(windows))]
+        let (virtual_experimental, virtual_note) = (false, None);
+        Ok(MidiPorts { ports, virtual_port: virtual_note.is_none(), virtual_experimental, virtual_note })
     }
 
     pub fn set_output(&mut self, output: OutputChoice) {
         self.release_all();
         self.conn = None;
+        // A port still opening for the old choice closes as soon as it opens.
+        self.pending = None;
+        self.auto_virtual = false;
         self.error = None;
         self.last_try = None;
         self.output = output;
@@ -142,23 +192,50 @@ impl MidiOut {
 
     fn connect(&mut self) {
         self.last_try = Some(Instant::now());
-        let result = match &self.output {
-            OutputChoice::Off => return,
-            OutputChoice::Virtual => open_virtual(),
-            OutputChoice::Port { name } => open_port(name),
-        };
-        match result {
-            Ok(conn) => {
-                self.conn = Some(conn);
-                self.error = None;
-            }
-            Err(e) => self.error = Some(e),
+        let output = self.output.clone();
+        if output == OutputChoice::Off {
+            return;
         }
+        let auto = self.auto_virtual;
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let opened = match &output {
+                // Never pick the experimental Windows port without the user asking for it.
+                OutputChoice::Virtual if auto && !virtual_is_default() => Err(String::new()),
+                OutputChoice::Virtual => open_virtual(),
+                OutputChoice::Port { name } => open_port(name),
+                OutputChoice::Off => return,
+            };
+            let _ = tx.send(opened);
+        });
+        self.pending = Some(rx);
     }
 
-    /// Called often from the event loop: retries a chosen port that was missing.
+    /// Called often from the event loop: picks up a port that finished opening, and retries a
+    /// chosen port that was missing.
     pub fn tick(&mut self) {
-        if self.conn.is_none() && self.output != OutputChoice::Off && self.last_try.is_none_or(|t| t.elapsed() >= RETRY) {
+        if let Some(rx) = &self.pending {
+            match rx.try_recv() {
+                Ok(Ok(conn)) => {
+                    self.pending = None;
+                    self.conn = Some(conn);
+                    self.error = None;
+                    if std::mem::take(&mut self.auto_virtual) {
+                        self.save_config();
+                    }
+                }
+                Ok(Err(e)) => {
+                    self.pending = None;
+                    if std::mem::take(&mut self.auto_virtual) {
+                        self.output = OutputChoice::Off;
+                    } else {
+                        self.error = Some(e);
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => self.pending = None,
+            }
+        } else if self.conn.is_none() && self.output != OutputChoice::Off && self.last_try.is_none_or(|t| t.elapsed() >= RETRY) {
             self.connect();
         }
         if self.rate_window.elapsed() >= Duration::from_secs(1) {
@@ -240,6 +317,7 @@ impl MidiOut {
         MidiStatus {
             output: self.output.clone(),
             connected: self.conn.as_ref().map(|(_, name)| name.clone()),
+            connecting: self.pending.is_some(),
             error: self.error.clone(),
             rate: self.rate,
             levels: self.engine.levels(),
@@ -314,7 +392,7 @@ impl MidiOut {
     }
 }
 
-fn open_port(name: &str) -> Result<(MidiOutputConnection, String), String> {
+fn open_port(name: &str) -> Opened {
     let out = MidiOutput::new(CLIENT_NAME).map_err(|e| e.to_string())?;
     let port = out
         .ports()
@@ -322,18 +400,27 @@ fn open_port(name: &str) -> Result<(MidiOutputConnection, String), String> {
         .find(|p| out.port_name(p).is_ok_and(|n| n == name))
         .ok_or_else(|| format!("\"{name}\" is not available"))?;
     let conn = out.connect(&port, CLIENT_NAME).map_err(|e| format!("Couldn't open \"{name}\": {e}"))?;
-    Ok((conn, name.to_string()))
+    Ok((Sink::Midir(conn), name.to_string()))
 }
 
 #[cfg(not(windows))]
-fn open_virtual() -> Result<(MidiOutputConnection, String), String> {
+fn open_virtual() -> Opened {
     use midir::os::unix::VirtualOutput;
     let out = MidiOutput::new(CLIENT_NAME).map_err(|e| e.to_string())?;
     let conn = out.create_virtual(VIRTUAL_PORT_NAME).map_err(|e| format!("Couldn't create the virtual port: {e}"))?;
-    Ok((conn, VIRTUAL_PORT_NAME.to_string()))
+    Ok((Sink::Midir(conn), VIRTUAL_PORT_NAME.to_string()))
+}
+
+/// Our own port may be the out-of-the-box output: everywhere but on Windows' preview service.
+fn virtual_is_default() -> bool {
+    #[cfg(windows)]
+    return crate::midi_win::available() == Ok(crate::midi_win::Support::System);
+    #[cfg(not(windows))]
+    true
 }
 
 #[cfg(windows)]
-fn open_virtual() -> Result<(MidiOutputConnection, String), String> {
-    Err(format!("Windows can't create a \"{VIRTUAL_PORT_NAME}\" port; pick a loopback port instead"))
+fn open_virtual() -> Opened {
+    let port = crate::midi_win::VirtualPort::open()?;
+    Ok((Sink::Virtual(port), crate::midi_win::PORT_NAME.to_string()))
 }

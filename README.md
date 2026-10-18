@@ -68,11 +68,16 @@ Logic…), to move effect knobs or play notes:
 - A live meter per mapping, the latest messages sent, and a *Panic* button for stuck notes.
 - A recording that plays back drives MIDI too, so a take can be replayed into the DAW.
 
-**Where the MIDI goes**: on macOS and Linux the app creates a *Steam Controller* MIDI port
-that your DAW lists as an input. Windows can't do that, so create a loopback port first, with
-Windows MIDI Services (*MIDI Settings → Loopback endpoints*) or the free
-[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), pick it as the output in
-the MIDI tab, and as an input in your DAW.
+**Where the MIDI goes**: the app makes its own *Steam Controller* MIDI port that your DAW lists
+as an input; pick it there and you're done. On macOS and Linux this always works. On Windows it
+needs Windows 11 25H2 or later and uses
+[Windows MIDI Services](https://github.com/microsoft/MIDI), which Microsoft still calls a
+**preview**: until its update (expected late November 2026), Windows makes the port only once
+per restart, so the MIDI tab offers it as **Steam Controller (experimental)**. It becomes a
+normal port by itself once Windows has the update. What always works on Windows is a loopback
+port: create one with the free [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
+(or Windows MIDI Services' *Loopback endpoints*), pick it as the output in the MIDI tab, and as an
+input in your DAW. The tab's *Setup guide* walks through it.
 
 ### Raw data
 
@@ -128,7 +133,8 @@ More tools (stick tester, gyro mouse, other output types next to MIDI) are plann
   the Desktop Layout bindings if that gets in the way.
 - **Linux**: your user needs access to the controller's `hidraw` devices. Steam installs a udev
   rule for this; without Steam, see [docs/PROTOCOL.md](docs/PROTOCOL.md#platform-notes).
-- **MIDI on Windows** needs a loopback MIDI port (see [MIDI](#midi)).
+- **MIDI on Windows**: the app's own port needs Windows 11 25H2+ and is experimental until
+  Microsoft's November update; a loopback port works everywhere (see [MIDI](#midi)).
 
 ## Download
 
@@ -188,6 +194,8 @@ npm run probe -- --raw --seconds 10
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |
 | `third_party/hidapi` | hidapi 2.6.7 with a one-line fix (see `docs/PROTOCOL.md`) |
+| `tools/midi2-bindings` | Generates the Rust bindings for Windows MIDI Services (`src-tauri/src/midi2_bindings.rs`) |
+| `src-tauri/vendor/windows-midi-services` | Microsoft's preview Windows MIDI Services API files, used only where Windows has none |
 | `docs/PROTOCOL.md` | How the app and the controller communicate |
 | `docs/screenshots` | The screenshots in this README |
 | `mockups/redesign.html` | Design reference for the app's look |
@@ -203,6 +211,9 @@ npm run probe -- --raw --seconds 10
   (`src/joystick/hidapi/SDL_hidapi_steam_triton.c`).
 - USB/HID access via [hidapi](https://github.com/libusb/hidapi) and
   [hidapi-rs](https://github.com/ruabmbua/hidapi-rs).
+- MIDI via [midir](https://github.com/Boddlnagg/midir); on Windows, the app's own port uses
+  Microsoft's [Windows MIDI Services](https://github.com/microsoft/MIDI) preview API
+  (`Windows.Devices.Midi2`, MIT), shipped with the app under Microsoft's preview "go-live" terms.
 
 ## License
 

@@ -21,3 +21,9 @@ serde_json = "1"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tauri-plugin-opener = "2"
 midir = "0.11"
+
+# Windows MIDI Services (our own virtual MIDI port on Windows 11 25H2+): runtime for the
+# generated bindings in src/midi2_bindings.rs (tools/midi2-bindings).
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.100"
+windows-collections = "0.100"
