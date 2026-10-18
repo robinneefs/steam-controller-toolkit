@@ -1,6 +1,68 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { MidiMapping, MidiOutputChoice, MidiPreset, MidiScale, MidiTarget, PadGrid, Snapshot } from "../controller";
+import { addHelp, helpIcon } from "../help";
 import type { Tab } from "./tab";
+
+addHelp({
+  "midi-output": `<b>Output</b> is the MIDI port the controller's messages go to. In your DAW, pick the same port
+    as a MIDI input. The dot turns green once messages are being sent.<br><br>
+    No port listed? On Windows, create a loopback port first. The <a data-open-guide>Setup guide</a> shows how.`,
+  "midi-preset": `<b>Presets</b> are complete sets of mappings and pad grids.
+    <ul><li><b>Effects + drums</b>: sticks, triggers, left pad and tilt to CC 20–29; face buttons and D-pad play drums on channel 10.</li>
+    <li><b>Pad instrument</b>: both pads play notes, triggers are mod wheel and expression, bumpers are sustain.</li>
+    <li><b>Effects only</b>: every analog input to its own CC.</li></ul>
+    Changes apply right away. <b>Save as…</b> keeps them; <b>Folder</b> shows the .json files so you can share them.`,
+  "midi-maps": `Each <b>mapping</b> turns one input into one MIDI message.
+    <ul><li><b>Input</b>: what you move or press. Click <b>◎</b> (Learn), then move the control.</li>
+    <li><b>Sends</b>: the message (CC, pitch bend, aftertouch, note or program change) and its number.</li>
+    <li><b>Ch</b>: MIDI channel 1–16.</li>
+    <li><b>⋯</b>: range, deadzone, curve, smoothing, invert, toggle and an "only while held" button.</li></ul>
+    The blue bar under a row shows the value being sent. Untick a row to pause it.`,
+  "midi-input": `What drives the mapping. Sticks, pads and tilt rest in the middle; triggers, pressure and buttons
+    rest at 0. Pad X/Y only send while the pad is touched.<br><br>
+    <b>◎ Learn</b>: click it, then move or press the control you want. Touch sensors and turn speed can't be learned; pick them from the list.`,
+  "midi-sends": `<ul><li><b>CC</b> (control change): for effect knobs and faders. Use your DAW's MIDI learn / MIDI map on a knob,
+    then move the control. <b>14-bit</b> gives smoother sweeps (CC 0–31) if the DAW supports it.</li>
+    <li><b>Pitch bend</b>: the middle of the input is no bend.</li>
+    <li><b>Aftertouch</b>: channel pressure, often vibrato or filter in synths.</li>
+    <li><b>Note</b>: plays while the input is past halfway, at the velocity you set.</li>
+    <li><b>Program</b>: a program change on each press, to switch sounds on instruments that support it.</li></ul>`,
+  "midi-channel": `MIDI channel 1–16. An instrument track in the DAW can listen to one channel, so give each part its own
+    channel (say pads on 1, drums on 10) to play different instruments at once.`,
+  "midi-shaping": `<ul><li><b>Range</b>: the part of the input's travel that sweeps the whole output; e.g. 50–100% uses only stick-up.</li>
+    <li><b>Deadzone</b>: travel at rest that is ignored, so a stick that doesn't centre perfectly stays still.</li>
+    <li><b>Curve</b>: left reacts fast at first; right starts slow for fine control.</li>
+    <li><b>Smooth</b>: evens out shaky input like tilt, at the cost of a little lag.</li>
+    <li><b>Invert</b>: flips the output.</li>
+    <li><b>Toggle</b>: each press flips between off and on (a latch, e.g. sustain or an effect on/off).</li>
+    <li><b>Active</b>: only send while a button is held, e.g. tilt only while R4 is down, so moving the controller
+      doesn't change anything by accident.</li></ul>`,
+  "midi-grid": `Play a <b>trackpad as a grid of notes</b>. The grid on the left mirrors the pad: bottom-left is the root note.
+    <ul><li><b>Scale</b> keeps every cell in key. <b>Row step</b> is how many scale notes each row goes up.</li>
+    <li><b>Play on</b>: Touch plays as soon as your thumb lands; Click waits until you press the pad down.</li>
+    <li><b>Slide</b>: sliding onto another cell plays it, like a glissando.</li>
+    <li><b>Pressure</b>: how hard you press, sent as aftertouch while the note holds.</li></ul>
+    The sound comes from the instrument listening to this <b>channel</b> in your DAW.`,
+  "midi-activity": `The latest MIDI messages sent, newest on top, with their channel. If this list moves but the DAW does
+    nothing, the port isn't enabled as a MIDI input there (see the <a data-open-guide>Setup guide</a>).
+    <b>Panic</b> stops notes that keep sounding.`,
+});
+
+const GUIDE_SEEN = "midi-guide-seen";
+function seenGuide(): boolean {
+  try {
+    return localStorage.getItem(GUIDE_SEEN) === "1";
+  } catch {
+    return false;
+  }
+}
+function markGuideSeen(): void {
+  try {
+    localStorage.setItem(GUIDE_SEEN, "1");
+  } catch {
+    // Not remembered; the guide just opens again next time.
+  }
+}
 
 /** Buttons by their names in protocol.rs `buttons::NAMES`, with friendlier labels. */
 const BUTTONS: [string, string][] = [
@@ -109,6 +171,51 @@ function decodeOutput(v: string): MidiOutputChoice {
   return v.startsWith("port:") ? { kind: "port", name: v.slice(5) } : { kind: v as "off" | "virtual" };
 }
 
+/** Step-by-step setup for this OS: a virtual port (macOS, Linux) or a loopback port (Windows). */
+function guideHtml(virtualPort: boolean, ports: string[]): string {
+  const loopback = ports.filter((p) => !/wavetable|microsoft gs/i.test(p));
+  const step1 = virtualPort
+    ? `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b>. The app makes this port itself; it goes away when the app closes.</p>`
+    : `<p>Windows can't let an app create its own MIDI port, so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>
+       <ul><li><b>Windows MIDI Services</b> (in recent Windows 11): open <b>MIDI Settings</b>, go to <b>Loopback endpoints</b> and create one.</li>
+       <li>Or install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.</li></ul>
+       <p>Then <button class="mini" data-guide-refresh>↻ Look for ports</button> and pick it under <b>Output</b>.
+       ${loopback.length ? `Found: <b>${loopback.map(escape).join("</b>, <b>")}</b>.` : `<span class="warn-text">No loopback port found yet.</span>`}
+       Skip <i>Microsoft GS Wavetable Synth</i>: it plays Windows' built-in sounds instead of reaching your DAW.</p>`;
+  return `
+    <div class="guide-head">
+      <h2>Connect to your DAW</h2>
+      <button class="icon-btn" data-guide-close title="Close" aria-label="Close">×</button>
+    </div>
+    <div class="guide-steps">
+      <section><h4><i>1</i>Choose where MIDI goes</h4>${step1}
+        <p>The dot next to the output turns <span class="ok-text">green</span> when it's connected.</p></section>
+      <section><h4><i>2</i>Turn the port on in your DAW</h4>
+        <p>Enable it as a MIDI <b>input</b>. Menu names vary a little between versions:</p>
+        <ul><li><b>Ableton Live</b>: Settings → Link, Tempo &amp; MIDI → for the port's input, turn on <b>Track</b> (notes) and <b>Remote</b> (knob mapping).</li>
+        <li><b>FL Studio</b>: Options → MIDI settings → select the port under Input and click <b>Enable</b>.</li>
+        <li><b>Bitwig Studio</b>: Settings → Controllers → <b>Add controller</b> → Generic → MIDI Keyboard, then pick the port.</li>
+        <li><b>Reaper</b>: Preferences → MIDI Inputs → enable the port.</li>
+        <li><b>Logic Pro</b> and <b>GarageBand</b>: new MIDI inputs are used automatically.</li>
+        <li><b>Cubase</b>: Studio → Studio Setup → MIDI Port Setup → make sure the port is active and "In All MIDI Inputs".</li></ul></section>
+      <section><h4><i>3</i>Play notes</h4>
+        <p>Make an <b>instrument track</b> (synth, piano, drum rack), set its MIDI input to the port (or All inputs) and arm or
+        monitor it. <b>Pad notes</b> and <b>Note</b> mappings now play it; the instrument decides the sound.</p>
+        <p>To play several instruments at once, give each part its own <b>channel</b> (e.g. right pad 1, left pad 2, drums 10)
+        and set each instrument track to listen to that channel.</p></section>
+      <section><h4><i>4</i>Control effects</h4>
+        <p>Use the DAW's <b>MIDI learn / MIDI map</b> (Ableton: Ctrl/Cmd+M; FL Studio: right-click a knob → Link to controller;
+        Bitwig, Reaper: right-click → Learn). Click a knob, then move the control that is mapped to a <b>CC</b> here.</p>
+        <p>Tip: the DAW learns the first CC it sees. While learning, untick the other mappings so a stick at rest
+        doesn't get picked instead.</p></section>
+      <section><h4><i>5</i>If nothing happens</h4>
+        <ul><li><b>Activity</b> stays empty: check the controller is connected (top right) and the mapping is ticked.</li>
+        <li>Activity moves but the DAW doesn't react: the port isn't enabled as an input there (step 2), or the track isn't armed.</li>
+        <li>Notes keep sounding: press <b>Panic</b>.</li>
+        <li>Steam is running: its Desktop Layout may move your mouse too (see the warning at the bottom of the window).</li></ul></section>
+    </div>`;
+}
+
 /** Send controller input to a DAW as MIDI: mappings for effects, note grids on the trackpads. */
 export class MidiTab implements Tab {
   id = "midi";
@@ -138,14 +245,15 @@ export class MidiTab implements Tab {
     root.innerHTML = `
       <div class="midi">
         <section class="tile midi-bar">
-          <label class="bar-group" title="Where MIDI goes. Pick this port as a MIDI input in your DAW.">
-            <span class="muted">Output</span>
+          <span class="bar-group">
+            <span class="muted">Output</span>${helpIcon("midi-output")}
             <select class="field" data-output></select>
-          </label>
-          <button class="mini" data-refresh title="Look for MIDI ports again">Refresh</button>
+          </span>
+          <button class="icon-btn" data-refresh title="Look for MIDI ports again" aria-label="Look for MIDI ports again">↻</button>
+          <button class="mini guide-btn" data-guide title="How to connect the controller to your DAW">Setup guide</button>
           <span class="midi-conn" data-conn></span>
           <span class="bar-group preset-group">
-            <span class="muted">Preset</span>
+            <span class="muted">Preset</span>${helpIcon("midi-preset")}
             <select class="field" data-preset></select>
             <input class="field" data-save-name placeholder="Preset name" maxlength="60" hidden />
             <button class="mini" data-save title="Save the current mappings as a preset">Save as…</button>
@@ -157,14 +265,14 @@ export class MidiTab implements Tab {
         </section>
 
         <section class="tile midi-maps">
-          <h3>Mappings <span class="head-actions"><em data-map-count></em><button class="mini" data-add>+ Add</button></span></h3>
-          <div class="map-head"><span></span><span>Input</span><span></span><span>Sends</span><span></span><span>Ch</span><span></span><span></span></div>
+          <h3><span class="h3-title">Mappings ${helpIcon("midi-maps")}</span> <span class="head-actions"><em data-map-count></em><button class="mini" data-add>+ Add</button></span></h3>
+          <div class="map-head"><span></span><span>Input ${helpIcon("midi-input")}</span><span></span><span>Sends ${helpIcon("midi-sends")}</span><span></span><span>Ch ${helpIcon("midi-channel")}</span><span></span><span></span></div>
           <div class="map-list" data-maps></div>
         </section>
 
         <div class="midi-side">
           <section class="tile midi-grid">
-            <h3>Pad notes
+            <h3><span class="h3-title">Pad notes ${helpIcon("midi-grid")}</span>
               <span class="segmented" data-sides>
                 <button data-side="left_pad">Left pad</button><button data-side="right_pad">Right pad</button>
               </span>
@@ -172,14 +280,25 @@ export class MidiTab implements Tab {
             <div data-grid></div>
           </section>
           <section class="tile midi-log">
-            <h3>Activity <em class="num" data-rate></em></h3>
+            <h3><span class="h3-title">Activity ${helpIcon("midi-activity")}</span> <em class="num" data-rate></em></h3>
             <div class="log" data-log></div>
           </section>
         </div>
+        <div class="midi-guide" data-guide-panel hidden></div>
       </div>`;
 
     this.q("[data-output]").addEventListener("change", (e) => this.setOutput(decodeOutput((e.target as HTMLSelectElement).value)));
     this.q("[data-refresh]").addEventListener("click", () => this.refreshPorts());
+    this.q("[data-guide]").addEventListener("click", () => this.showGuide(this.q("[data-guide-panel]").hidden !== false));
+    // "Setup guide" links in hints and help tips (the tips live on <body>, outside this tab).
+    document.addEventListener("click", (e) => {
+      if ((e.target as Element).closest?.("[data-open-guide]")) this.showGuide(true);
+    });
+    this.q("[data-guide-panel]").addEventListener("click", (e) => {
+      const el = e.target as Element;
+      if (el.closest("[data-guide-close]")) this.showGuide(false);
+      if (el.closest("[data-guide-refresh]")) this.refreshPorts().then(() => this.showGuide(true));
+    });
     this.q("[data-panic]").addEventListener("click", () => invoke("midi_panic"));
     this.q("[data-preset]").addEventListener("change", (e) => this.loadPreset((e.target as HTMLSelectElement).value));
     this.q("[data-save]").addEventListener("click", () => this.saveClicked());
@@ -227,6 +346,8 @@ export class MidiTab implements Tab {
       this.renderPresets();
       this.renderMaps();
       this.renderGrid();
+      // First visit with nothing set up: start with the guide.
+      if (this.output.kind === "off" && !seenGuide()) this.showGuide(true);
     } catch (e) {
       this.flash(String(e));
     }
@@ -241,7 +362,12 @@ export class MidiTab implements Tab {
       : m.error
         ? `<i class="warn"></i><span title="${escape(m.error)}">${escape(m.error)}</span>`
         : `<i></i>Not sending`;
-    if (conn !== this.lastStatus) this.q("[data-conn]").innerHTML = this.lastStatus = conn;
+    if (conn !== this.lastStatus) {
+      const el = this.q("[data-conn]");
+      el.innerHTML = this.lastStatus = conn;
+      // The text gets cut short in narrow windows; the full status is on hover.
+      el.title = m.connected ? `Sending to ${m.connected}` : (m.error ?? "Not sending: pick an output");
+    }
     const rate = m.connected ? `${m.rate} msg/s` : "";
     const rateEl = this.q("[data-rate]");
     if (rateEl.textContent !== rate) rateEl.textContent = rate;
@@ -294,7 +420,18 @@ export class MidiTab implements Tab {
     return this.virtualPort
       ? `Pick <b>Steam Controller (virtual port)</b> as the output, then choose it as a MIDI input in your DAW.`
       : `Windows needs a loopback MIDI port: create one in Windows MIDI Services (MIDI Settings → Loopback endpoints)
-         or with loopMIDI, press Refresh, pick it as the output here and as a MIDI input in your DAW.`;
+         or with loopMIDI, press ↻, pick it as the output here and as a MIDI input in your DAW.
+         <a data-open-guide>Setup guide</a>`;
+  }
+
+  private showGuide(on: boolean): void {
+    const panel = this.q("[data-guide-panel]");
+    if (on) {
+      panel.innerHTML = guideHtml(this.virtualPort, this.ports);
+      markGuideSeen();
+    }
+    panel.hidden = !on;
+    this.q("[data-guide]").classList.toggle("on", on);
   }
 
   private q<T extends HTMLElement = HTMLElement>(sel: string): T {
@@ -518,6 +655,7 @@ export class MidiTab implements Tab {
         </div>
         <span class="meter"><i></i></span>
         <div class="map-more" ${this.open.has(i) ? "" : "hidden"}>
+          ${helpIcon("midi-shaping", "What these settings do")}
           <label title="Part of the input's travel that spans the output, in %">Range
             <input class="field num" type="number" data-f="range0" min="0" max="100" value="${pct(m.range[0])}" />–<input class="field num" type="number" data-f="range1" min="0" max="100" value="${pct(m.range[1])}" />%</label>
           <label title="Travel around the centre (or at the bottom) that counts as rest, in %">Deadzone

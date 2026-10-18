@@ -66,6 +66,14 @@ button, a { cursor: pointer; }
   transition: opacity 0.15s, transform 0.15s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+/* Help: a small "?" that shows a tip on hover, focus or click (src/help.ts). */
+.help { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 1px solid #66c0f466; border-radius: 50%; background: #1a9fff1a; color: var(--accent-2); font-size: 10.5px; font-weight: 700; line-height: 1; letter-spacing: 0; text-transform: none; cursor: help; }
+.help:hover, .help:focus-visible { background: #1a9fff44; color: var(--text); outline: none; }
+.help-tip { position: fixed; z-index: 30; max-width: 340px; padding: 10px 12px; border: 1px solid #1a9fff55; border-radius: 12px; background: #1b2738; box-shadow: 0 10px 30px #000a; color: #c9d3de; font-size: 13px; font-weight: 500; line-height: 1.45; letter-spacing: 0; text-transform: none; }
+.help-tip[hidden] { display: none; }
+.help-tip b { color: var(--text); }
+.help-tip ul { margin: 4px 0; padding-left: 16px; }
+.help-tip li { margin-bottom: 3px; }
 * { scrollbar-width: thin; scrollbar-color: #ffffff2e transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -597,6 +605,29 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .mini.danger.armed { border-color: #ff6b6b88; background: #ff6b6b26; color: #ffb3b3; }
 select.field.edited { border-color: #ffb54788; }
 
+.midi { position: relative; }
+.h3-title { display: inline-flex; align-items: center; gap: 6px; }
+.map-head > span { display: inline-flex; align-items: center; gap: 4px; }
+.mini.guide-btn { border-color: #1a9fff66; background: #1a9fff1f; }
+.mini.guide-btn.on { background: #1a9fff44; color: var(--text); }
+.map-more > .help { margin-right: -6px; }
+/* Setup guide: covers the tab until closed. */
+.midi-guide { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; padding: 16px 20px; border: 1px solid #1a9fff55; border-radius: 18px; background: #111b29f2; box-shadow: 0 12px 40px #000a; backdrop-filter: blur(6px); }
+.midi-guide[hidden] { display: none; }
+.guide-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.guide-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.guide-steps { flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; align-content: start; font-size: 13.5px; line-height: 1.45; }
+.guide-steps section:nth-child(2) { grid-row: span 2; }
+.guide-steps h4 { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; font-size: 15px; }
+.guide-steps h4 i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-style: normal; }
+.guide-steps p { margin: 0 0 6px; color: #c9d3de; }
+.guide-steps ul { margin: 0 0 6px; padding-left: 18px; color: #c9d3de; }
+.guide-steps li { margin-bottom: 3px; }
+.guide-steps b { color: var(--text); }
+.ok-text { color: var(--ok); font-weight: 600; }
+.warn-text { color: var(--warm); font-weight: 600; }
+.midi .hint a, .help-tip a { color: var(--accent-2); cursor: pointer; }
+
 /* Form controls, dark like the rest. */
 .field {
   min-width: 0;
@@ -673,6 +704,7 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 
 .midi-log { display: flex; flex-direction: column; min-height: 120px; flex: 1 1 0 !important; }
 .log { flex: 1; min-height: 0; overflow: hidden; font: 12px/1.65 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.log .hint { font: 12.5px/1.4 "Barlow", system-ui, sans-serif; }
 .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .log div:first-child { color: var(--text); }
 .log div:not(:first-child) { color: var(--muted); }
