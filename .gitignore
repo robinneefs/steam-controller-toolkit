@@ -1,6 +1,18 @@
+# Build output
 /target
-node_modules/
 dist/
-src-tauri/target/
 src-tauri/gen/
+
+# Dependencies
+node_modules/
+
+# Local secrets, logs and per-user settings
+.env
+.env.*
+*.log
+.claude/settings.local.json
+
+# OS junk
 .DS_Store
+Thumbs.db
+desktop.ini
