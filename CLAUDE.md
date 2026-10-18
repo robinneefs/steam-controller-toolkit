@@ -99,6 +99,10 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 - `npm run tauri dev`: run the app
 - `npm run probe -- --raw --seconds 10`: terminal dump of devices and live decoded reports
 - `npm run tauri build`: release bundle for the current OS (macOS/Linux builds need those OSes; use CI)
+- CI (`.github/workflows/build.yml`, tauri-action): run it by hand for Windows/macOS (universal)/Linux
+  bundles as run artifacts; pushing a `v*` tag also puts them in a draft GitHub release. Each OS
+  also gets a portable build that runs without installing: the bare `.exe` (frontend is embedded),
+  the zipped `.app`, the AppImage
 
 ## Platform notes
 

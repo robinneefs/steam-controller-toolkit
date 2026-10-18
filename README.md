@@ -78,6 +78,18 @@ More tools (haptics, stick tester, gyro mouse) are planned. See
 - **Linux**: your user needs access to the controller's `hidraw` devices. Steam installs a udev
   rule for this; without Steam, see [docs/PROTOCOL.md](docs/PROTOCOL.md#platform-notes).
 
+## Download
+
+Builds are on the [Releases](https://github.com/robinneefs/steam-controller-toolkit/releases)
+page. The portable versions run without installing:
+
+- **Windows**: `..._x64_portable.exe`. Just run it (it uses WebView2, which Windows 10/11 include).
+- **macOS**: `..._macos_universal.zip`. Unzip it and open the app. The app isn't signed, so the
+  first time, right-click it and choose *Open*.
+- **Linux**: `..._amd64.AppImage`. Make it executable (`chmod +x`) and run it.
+
+Installers (`.msi`/setup `.exe`, `.dmg`, `.deb`/`.rpm`) are there too if you prefer them.
+
 ## Building from source
 
 1. Install [Rust](https://rustup.rs), [Node.js](https://nodejs.org) 20+ and the
