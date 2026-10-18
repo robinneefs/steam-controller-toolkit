@@ -3359,7 +3359,7 @@ checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
 
 [[package]]
 name = "steam-controller-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "midir",
  "sc-core",

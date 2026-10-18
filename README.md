@@ -67,17 +67,27 @@ Logic…), to move effect knobs or play notes:
   in; save your own (plain JSON files in the app's data folder, easy to share).
 - A live meter per mapping, the latest messages sent, and a *Panic* button for stuck notes.
 - A recording that plays back drives MIDI too, so a take can be replayed into the DAW.
+- A **Setup guide** for your system and DAW, and a **?** on every section that explains it.
 
-**Where the MIDI goes**: the app makes its own *Steam Controller* MIDI port that your DAW lists
-as an input; pick it there and you're done. On macOS and Linux this always works. On Windows it
-needs Windows 11 25H2 or later and uses
-[Windows MIDI Services](https://github.com/microsoft/MIDI), which Microsoft still calls a
-**preview**: until its update (expected late November 2026), Windows makes the port only once
-per restart, so the MIDI tab offers it as **Steam Controller (experimental)**. It becomes a
-normal port by itself once Windows has the update. What always works on Windows is a loopback
-port: create one with the free [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
-(or Windows MIDI Services' *Loopback endpoints*), pick it as the output in the MIDI tab, and as an
-input in your DAW. The tab's *Setup guide* walks through it.
+![MIDI tab: output, mappings with live meters, a note grid on the right trackpad and the messages sent](docs/screenshots/midi.png)
+
+**Where the MIDI goes**: the app makes its own **Steam Controller** MIDI port, the default
+output; pick it as a MIDI input in your DAW and you're done.
+
+- **macOS**: a CoreMIDI port, on every macOS version. Logic and GarageBand use it
+  automatically; other DAWs list it as an input.
+- **Linux**: an ALSA MIDI port (`aconnect -l` shows it). On PipeWire it reaches JACK apps too;
+  on plain JACK, bridge it with `a2jmidid -e`.
+- **Windows**: needs Windows 11 25H2 or later and uses
+  [Windows MIDI Services](https://github.com/microsoft/MIDI), which Microsoft still calls a
+  **preview**. Until its update (expected late November 2026), Windows makes the port only once
+  per restart, so the MIDI tab offers it as **Steam Controller (experimental)**; it becomes a
+  normal port by itself once Windows has the update. What always works is a loopback port:
+  create one with the free [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
+  (or Windows MIDI Services' *Loopback endpoints*), pick it as the output in the MIDI tab, and as
+  an input in your DAW.
+
+![MIDI Setup guide on Windows: choosing a port, turning it on in each DAW, playing notes](docs/screenshots/midi-guide.png)
 
 ### Raw data
 
@@ -148,6 +158,9 @@ page. The portable versions run without installing:
 
 Installers (`.msi`/setup `.exe`, `.dmg`, `.deb`/`.rpm`) are there too if you prefer them.
 
+What changed in each version is in the [changelog](CHANGELOG.md). The version you're running is
+shown at the bottom right of the window and in the About tab.
+
 ## Building from source
 
 1. Install [Rust](https://rustup.rs), [Node.js](https://nodejs.org) 20+ and the
@@ -168,6 +181,32 @@ To build an installer for your current OS:
 ```bash
 npm run tauri build
 ```
+
+### Releasing
+
+Versions follow [semantic versioning](https://semver.org) (while it's 0.x: new features bump the
+minor version, fixes the patch version). `package.json` holds the version; the app and the Rust
+crate take it from there.
+
+1. Add the changes under a new heading in [`CHANGELOG.md`](CHANGELOG.md) and commit.
+2. Bump, commit and tag in one go (this also updates `src-tauri/Cargo.toml` and `Cargo.lock`):
+
+```bash
+npm version minor
+```
+
+3. Push the commit and the tag; the tag makes CI build every platform into a draft release:
+
+```bash
+git push --follow-tags
+```
+
+4. Check the draft on the Releases page, paste the changelog entry and publish it.
+
+### Screenshots
+
+The screenshots in this README are the real app fed a real recording. To retake them after a
+change to how a tab looks, see [`tools/screenshots/README.md`](tools/screenshots/README.md).
 
 ### Checking the 3D model
 
@@ -194,6 +233,9 @@ npm run probe -- --raw --seconds 10
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |
 | `third_party/hidapi` | hidapi 2.6.7 with a one-line fix (see `docs/PROTOCOL.md`) |
+| `tools/screenshots` | Takes the README screenshots: the real UI fed a recording, in headless Edge/Chrome |
+| `tools/sync-version.mjs` | Copies the version from `package.json` to the Rust crate (run by `npm version`) |
+| `CHANGELOG.md` | What changed in each version |
 | `tools/midi2-bindings` | Generates the Rust bindings for Windows MIDI Services (`src-tauri/src/midi2_bindings.rs`) |
 | `src-tauri/vendor/windows-midi-services` | Microsoft's preview Windows MIDI Services API files, used only where Windows has none |
 | `docs/PROTOCOL.md` | How the app and the controller communicate |

@@ -20,3 +20,6 @@ desktop.ini
 # Windows MIDI Services binding generator (tools/midi2-bindings)
 tools/midi2-bindings/target/
 tools/midi2-bindings/Cargo.lock
+
+# Snapshots for tools/screenshots (generated from a recording)
+tools/screenshots/snapshots.json

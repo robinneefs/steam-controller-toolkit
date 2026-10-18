@@ -6,10 +6,10 @@ import type { Tab } from "./tab";
 addHelp({
   "midi-output": `<b>Output</b> is the MIDI port the controller's messages go to. In your DAW, pick the same port
     as a MIDI input. The dot turns green once messages are being sent.<br><br>
-    <b>Steam Controller</b> is the app's own port: nothing to install. On Windows it needs Windows 11 25H2 or later
-    and Windows MIDI Services. Until Microsoft's MIDI update (expected late November 2026) it's marked
-    <b>experimental</b> there: Windows makes it only once per restart. A loopback port always works; the
-    <a data-open-guide>Setup guide</a> shows how.`,
+    <b>Steam Controller</b> is the app's own port: nothing to install. On macOS (CoreMIDI) and Linux (ALSA) it always
+    works. On Windows it needs Windows 11 25H2 or later and Windows MIDI Services; until Microsoft's MIDI update
+    (expected late November 2026) it's marked <b>experimental</b> there, because Windows makes it only once per
+    restart, and a loopback port is the dependable choice. The <a data-open-guide>Setup guide</a> shows how.`,
   "midi-preset": `<b>Presets</b> are complete sets of mappings and pad grids.
     <ul><li><b>Effects + drums</b>: sticks, triggers, left pad and tilt to CC 20–29; face buttons and D-pad play drums on channel 10.</li>
     <li><b>Pad instrument</b>: both pads play notes, triggers are mod wheel and expression, bumpers are sustain.</li>
@@ -174,7 +174,11 @@ function decodeOutput(v: string): MidiOutputChoice {
   return v.startsWith("port:") ? { kind: "port", name: v.slice(5) } : { kind: v as "off" | "virtual" };
 }
 
-const ON_WINDOWS = navigator.userAgent.includes("Windows");
+/** Which system the app runs on, for the Setup guide. */
+type Os = "windows" | "mac" | "linux";
+const UA = navigator.userAgent;
+const OS: Os = UA.includes("Windows") ? "windows" : UA.includes("Mac") ? "mac" : "linux";
+const OS_NAMES: Record<Os, string> = { windows: "Windows", mac: "macOS", linux: "Linux" };
 const EXPERIMENTAL = `Experimental on this Windows: until Microsoft's MIDI update (expected late November 2026), Windows can make this
        port only once per restart. If it says the MIDI service isn't responding, restart the PC or use a loopback port.
        It uses Windows MIDI Services, which Microsoft still calls a preview.`;
@@ -186,39 +190,71 @@ interface VirtualSupport {
   note: string | null;
 }
 
-/** Step-by-step setup: our own virtual port where this PC can have one, else a loopback port. */
-function guideHtml(v: VirtualSupport, ports: string[]): string {
+/** DAWs and where they turn a MIDI input on, by the systems they run on. */
+const DAWS: [string, Os[], string][] = [
+  ["Ableton Live", ["windows", "mac"], "Settings → Link, Tempo &amp; MIDI → for the port's input, turn on <b>Track</b> (notes) and <b>Remote</b> (knob mapping)."],
+  ["FL Studio", ["windows", "mac"], "Options → MIDI settings → select the port under Input and click <b>Enable</b>."],
+  ["Bitwig Studio", ["windows", "mac", "linux"], "Settings → Controllers → <b>Add controller</b> → Generic → MIDI Keyboard, then pick the port."],
+  ["Reaper", ["windows", "mac", "linux"], "Preferences → MIDI Inputs (MIDI Devices) → enable the port."],
+  ["Logic Pro and GarageBand", ["mac"], "new MIDI inputs are used automatically."],
+  ["Cubase", ["windows", "mac"], "Studio → Studio Setup → MIDI Port Setup → make sure the port is active and \"In All MIDI Inputs\"."],
+  ["Ardour", ["linux", "mac"], "Window → MIDI Connections, or pick the port as the track's input."],
+];
+
+/** Step 1 per system: our own virtual port where this PC can have one, else a loopback port. */
+function portStep(v: VirtualSupport, ports: string[]): string {
+  if (OS === "mac") {
+    return `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b> (it's the default). The app makes this
+      CoreMIDI port itself, so there's nothing to install; DAWs list it as a MIDI input while the app runs.</p>
+      <p class="muted">macOS may ask to allow <b>Input Monitoring</b> the first time; that's for reading the controller.</p>`;
+  }
+  if (OS === "linux") {
+    return `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b> (it's the default). The app makes an
+      <b>ALSA MIDI</b> port while it runs; nothing to install. <code>aconnect -l</code> lists it.</p>
+      <p>On <b>PipeWire</b> (most current distros) it also shows up for JACK apps. On plain <b>JACK</b>, bridge ALSA MIDI
+      with <code>a2jmidid -e</code> (or your JACK setup's ALSA MIDI option).</p>`;
+  }
+  if (v.available && !v.experimental) {
+    return `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b> (it's the default). The app makes this port
+      itself with Windows MIDI Services, so there's nothing to install; it goes away when the app closes.</p>`;
+  }
   const loopback = ports.filter((p) => !/wavetable|microsoft gs/i.test(p));
-  const step1 = v.available && !v.experimental
-    ? `<p>Pick <b>Steam Controller (virtual port)</b> under <b>Output</b> (it's the default). The app makes this port
-       itself, so there's nothing to install; it goes away when the app closes.</p>
-       ${ON_WINDOWS ? `<p class="muted">On Windows this uses Windows MIDI Services.</p>` : ""}`
-    : `${v.experimental
-        ? `<p><b>Quick try:</b> pick <b>Steam Controller (experimental)</b> under <b>Output</b>. ${EXPERIMENTAL}</p>
-           <p><b>Always works:</b> a loopback port. Make one once; it passes MIDI from this app to your DAW:</p>`
-        : `<p>This PC can't give the app its own MIDI port${v.note ? ` (${escape(v.note.replace(/\.$/, ""))})` : ""},
-           so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>`}
-       <ul><li><b>Windows MIDI Services</b> (in recent Windows 11): open <b>MIDI Settings</b>, go to <b>Loopback endpoints</b> and create one.</li>
-       <li>Or install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.</li></ul>
-       <p>Then <button class="mini" data-guide-refresh>↻ Look for ports</button> and pick it under <b>Output</b>.
-       ${loopback.length ? `Found: <b>${loopback.map(escape).join("</b>, <b>")}</b>.` : `<span class="warn-text">No loopback port found yet.</span>`}
-       Skip <i>Microsoft GS Wavetable Synth</i>: it plays Windows' built-in sounds instead of reaching your DAW.</p>`;
+  return `${v.experimental
+      ? `<p><b>Quick try:</b> pick <b>Steam Controller (experimental)</b> under <b>Output</b>. ${EXPERIMENTAL}</p>
+         <p><b>Always works:</b> a loopback port. Make one once; it passes MIDI from this app to your DAW:</p>`
+      : `<p>This PC can't give the app its own MIDI port${v.note ? ` (${escape(v.note.replace(/\.$/, ""))})` : ""},
+         so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>`}
+    <ul><li>Install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.</li>
+    <li>Or, with Windows MIDI Services (recent Windows 11): open <b>MIDI Settings</b>, go to <b>Loopback endpoints</b> and create one.</li></ul>
+    <p>Then <button class="mini" data-guide-refresh>↻ Look for ports</button> and pick it under <b>Output</b>.
+    ${loopback.length ? `Found: <b>${loopback.map(escape).join("</b>, <b>")}</b>.` : `<span class="warn-text">No loopback port found yet.</span>`}
+    Skip <i>Microsoft GS Wavetable Synth</i>: it plays Windows' built-in sounds instead of reaching your DAW.</p>`;
+}
+
+/** Problems worth a line, per system. */
+const TROUBLE: Record<Os, string> = {
+  windows: `<li>"The Windows MIDI service isn't responding": restart the PC, or use a loopback port (step 1).</li>`,
+  mac: `<li>No controller found: allow the app under System Settings → Privacy &amp; Security → <b>Input Monitoring</b>.</li>`,
+  linux: `<li>No port appears: the ALSA sequencer may be off; <code>sudo modprobe snd-seq</code> turns it on.</li>
+    <li>No controller found: your user needs access to <code>hidraw</code> (Steam's udev rules give it).</li>`,
+};
+
+/** Step-by-step setup, for the system the app runs on. */
+function guideHtml(v: VirtualSupport, ports: string[]): string {
+  const daws = DAWS.filter(([, systems]) => systems.includes(OS))
+    .map(([name, , how]) => `<li><b>${name}</b>: ${how}</li>`)
+    .join("");
   return `
     <div class="guide-head">
-      <h2>Connect to your DAW</h2>
+      <h2>Connect to your DAW <span class="guide-os">${OS_NAMES[OS]}</span></h2>
       <button class="icon-btn" data-guide-close title="Close" aria-label="Close">×</button>
     </div>
     <div class="guide-steps">
-      <section><h4><i>1</i>Choose where MIDI goes</h4>${step1}
+      <section><h4><i>1</i>Choose where MIDI goes</h4>${portStep(v, ports)}
         <p>The dot next to the output turns <span class="ok-text">green</span> when it's connected.</p></section>
       <section><h4><i>2</i>Turn the port on in your DAW</h4>
         <p>Enable it as a MIDI <b>input</b>. Menu names vary a little between versions:</p>
-        <ul><li><b>Ableton Live</b>: Settings → Link, Tempo &amp; MIDI → for the port's input, turn on <b>Track</b> (notes) and <b>Remote</b> (knob mapping).</li>
-        <li><b>FL Studio</b>: Options → MIDI settings → select the port under Input and click <b>Enable</b>.</li>
-        <li><b>Bitwig Studio</b>: Settings → Controllers → <b>Add controller</b> → Generic → MIDI Keyboard, then pick the port.</li>
-        <li><b>Reaper</b>: Preferences → MIDI Inputs → enable the port.</li>
-        <li><b>Logic Pro</b> and <b>GarageBand</b>: new MIDI inputs are used automatically.</li>
-        <li><b>Cubase</b>: Studio → Studio Setup → MIDI Port Setup → make sure the port is active and "In All MIDI Inputs".</li></ul></section>
+        <ul>${daws}</ul></section>
       <section><h4><i>3</i>Play notes</h4>
         <p>Make an <b>instrument track</b> (synth, piano, drum rack), set its MIDI input to the port (or All inputs) and arm or
         monitor it. <b>Pad notes</b> and <b>Note</b> mappings now play it; the instrument decides the sound.</p>
@@ -233,6 +269,7 @@ function guideHtml(v: VirtualSupport, ports: string[]): string {
         <ul><li><b>Activity</b> stays empty: check the controller is connected (top right) and the mapping is ticked.</li>
         <li>Activity moves but the DAW doesn't react: the port isn't enabled as an input there (step 2), or the track isn't armed.</li>
         <li>Notes keep sounding: press <b>Panic</b>.</li>
+        ${TROUBLE[OS]}
         <li>Steam is running: its Desktop Layout may move your mouse too (see the warning at the bottom of the window).</li></ul></section>
     </div>`;
 }

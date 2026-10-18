@@ -591,7 +591,10 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .midi .hint b { color: var(--text); font-weight: 600; }
 .midi-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 8px 14px; min-width: 0; }
 .midi-bar .bar-group { gap: 8px; min-width: 0; }
-.midi-bar [data-output] { width: 200px; }
+.midi-bar [data-output] { width: auto; min-width: 140px; max-width: 250px; }
+.midi-bar .mini, .midi-bar .icon-btn { flex: none; white-space: nowrap; }
+.midi-conn { min-width: 12px; }
+@media (max-width: 1099px) { .midi-bar [data-output] { max-width: 170px; } .midi-bar { gap: 8px; } }
 .midi-bar [data-preset], .midi-bar [data-save-name] { width: 170px; }
 .preset-group { margin-left: auto; }
 .preset-group [hidden] { display: none; }
@@ -615,7 +618,9 @@ select.field.edited { border-color: #ffb54788; }
 .midi-guide { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; padding: 16px 20px; border: 1px solid #1a9fff55; border-radius: 18px; background: #111b29f2; box-shadow: 0 12px 40px #000a; backdrop-filter: blur(6px); }
 .midi-guide[hidden] { display: none; }
 .guide-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.guide-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.guide-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 20px; font-weight: 700; }
+.guide-os { padding: 2px 10px; border: 1px solid #1a9fff55; border-radius: 999px; background: #1a9fff1f; color: var(--accent-2); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+.guide-steps code, .help-tip code { padding: 0 4px; border-radius: 4px; background: #ffffff12; font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--text); }
 .guide-steps { flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; align-content: start; font-size: 13.5px; line-height: 1.45; }
 .guide-steps section:nth-child(2) { grid-row: span 2; }
 .guide-steps h4 { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; font-size: 15px; }

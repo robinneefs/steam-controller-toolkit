@@ -397,3 +397,63 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod screenshot_data {
+    use super::*;
+    use std::collections::VecDeque;
+
+    /// Replays a recording through the same folds and MIDI engine as the app and writes the
+    /// snapshots the UI would get (60 per second), plus the MIDI preset, as JSON for the README
+    /// screenshots (tools/screenshots):
+    /// `SC_RECORDING=<file.screc> SC_SNAPSHOTS=<out.json> cargo test -p steam-controller-app --lib snapshots -- --ignored`
+    #[test]
+    #[ignore]
+    fn snapshots() {
+        let input = std::env::var("SC_RECORDING").expect("SC_RECORDING");
+        let output = std::env::var("SC_SNAPSHOTS").expect("SC_SNAPSHOTS");
+        let packets = sc_core::recording::read_file(std::path::Path::new(&input)).unwrap();
+        let mut fold = Fold::default();
+        // The default preset, with notes on the right pad so the MIDI tab's grid lights up.
+        let mut preset = midi::Preset::default();
+        preset.right_pad = midi::builtin_presets()[1].right_pad;
+        let mut engine = midi::Engine::new(preset.clone());
+        let (mut msgs, mut log, mut sent) = (Vec::new(), VecDeque::new(), 0u64);
+        let mut states: VecDeque<Duration> = VecDeque::new();
+        let mut frames = Vec::new();
+        let mut next = Duration::ZERO;
+        for p in &packets {
+            while p.at >= next {
+                while states.front().is_some_and(|t| next.saturating_sub(*t) > Duration::from_secs(1)) {
+                    states.pop_front();
+                }
+                fold.snap.report_rate = states.len() as u32;
+                fold.snap.midi = MidiStatus {
+                    output: OutputChoice::Virtual,
+                    connected: Some("Steam Controller".into()),
+                    rate: 180,
+                    levels: engine.levels(),
+                    cells: engine.grid_cells(),
+                    log: log.iter().cloned().collect(),
+                    ..Default::default()
+                };
+                frames.push(fold.snap.clone());
+                next += EMIT_INTERVAL;
+            }
+            if let Some(s) = fold.packet(&p.slot, &p.data) {
+                states.push_back(p.at);
+                engine.process(&s, &mut msgs);
+                for m in msgs.drain(..) {
+                    sent += 1;
+                    log.push_back((sent, m.as_slice().to_vec()));
+                    if log.len() > 14 {
+                        log.pop_front();
+                    }
+                }
+            }
+        }
+        let json = serde_json::json!({ "preset": preset, "frames": frames });
+        std::fs::write(output, json.to_string()).unwrap();
+        println!("{} frames", frames.len());
+    }
+}

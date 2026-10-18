@@ -10,7 +10,15 @@ generated from it with `npx tauri icon assets/logo.png` (delete the android/ios 
 `public/logo.png` is the in-app/favicon copy. Code is MIT (`LICENSE`); the protocol is
 documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`. The README
 links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
-`docs/screenshots/` (taken at the default 1100 x 720 window); retake them when a tab's look changes.
+`docs/screenshots/` (taken at the default 1100 x 720 window, 1.5x); retake them when a tab's look changes
+with `tools/screenshots` (the real UI fed a real recording through a mock backend, captured by headless
+Edge/Chrome; see its README). The MIDI tab has two shots: `midi.png` and `midi-guide.png`.
+
+Versioning: semver, `package.json` is the single source (`tauri.conf.json` points at it,
+`tools/sync-version.mjs` copies it to `src-tauri/Cargo.toml` + `Cargo.lock` as npm's `version` script).
+Every user-visible change gets a line in `CHANGELOG.md` under the next version; releasing is
+`npm version minor|patch` then `git push --follow-tags` (see README, Releasing). Never push tags
+without the user asking: a `v*` tag makes CI draft a release.
 
 ## Stack
 
@@ -33,9 +41,11 @@ links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab fr
   `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`. `forward_events` feeds it every
   state report (~265 Hz, not the 60 Hz UI rate) from whatever the UI shows, live or replay, and
   releases held notes when switching between them, seeking, or losing the controller. Ports open
-  on a thread of their own (`tick` picks up the result), never on the event loop. macOS/Linux
-  get a virtual "Steam Controller" port from midir. Windows gets one from Windows MIDI Services
-  (`midi_win.rs`, app-to-app MIDI) on 11 25H2+, else the user picks a loopback port (loopMIDI).
+  on a thread of their own (`tick` picks up the result), never on the event loop. macOS (CoreMIDI)
+  and Linux (ALSA) get a virtual "Steam Controller" port from midir; not yet run on those systems,
+  only built in CI. Windows gets one from Windows MIDI Services (`midi_win.rs`, app-to-app MIDI)
+  on 11 25H2+, else the user picks a loopback port (loopMIDI). The MIDI tab's Setup guide is
+  per system (`guideHtml`/`portStep` in `src/tabs/midi.ts`); keep it in step with the README.
   Source names are mirrored in `SOURCES` in
   `src/tabs/midi.ts` and the presets' JSON shape in `controller.ts`; keep them in sync. Learn
   (`Engine::start_learn`) ignores touch sensors and gyro, which move whenever anything else does.
