@@ -2,7 +2,7 @@
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
-effect), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+effect), MIDI (controller as a MIDI controller), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs, rounded tiles.
 
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
@@ -26,6 +26,18 @@ links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab fr
   unchanged; `Snapshot.tape` says what is recording/playing. Files live in
   `<app data dir>/recordings` (not Documents: macOS would prompt for access). During playback
   the power button is hidden and Haptics acts disconnected.
+- **MIDI**: `src-tauri/src/midi.rs` is the engine, pure and unit-tested: a `Preset` of
+  `Mapping`s (source string -> shaping -> `Target` message) plus a `PadGrid` per trackpad;
+  `Engine::process` turns each state report into messages, sent only when the value they carry
+  changes. `midi_out.rs` owns the port (`midir`), `config.json` and saved presets in
+  `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`. `forward_events` feeds it every
+  state report (~265 Hz, not the 60 Hz UI rate) from whatever the UI shows, live or replay, and
+  releases held notes when switching between them, seeking, or losing the controller. macOS/Linux
+  get a virtual "Steam Controller" port; Windows can't create one (WinMM), so the user picks a
+  loopback port (Windows MIDI Services or loopMIDI). Source names are mirrored in `SOURCES` in
+  `src/tabs/midi.ts` and the presets' JSON shape in `controller.ts`; keep them in sync. Learn
+  (`Engine::start_learn`) ignores touch sensors and gyro, which move whenever anything else does.
+  Other outputs (OSC, virtual gamepad, keyboard/mouse) should hang off the same feed.
 - **`src/`**: `main.ts` builds the tab bar from the `tabs` array; each tab implements `Tab` in
   `src/tabs/tab.ts`. `src/controller.ts` mirrors the Rust types and must be kept in sync with
   `crates/sc-core/src/protocol.rs` and `Snapshot` in `src-tauri/src/lib.rs`.
@@ -120,7 +132,9 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 ## Platform notes
 
 - Linux needs udev rules granting access to `hidraw` for VID 28de (Steam installs them).
+  Building on Linux needs `libasound2-dev` for `midir` (installed in CI).
 - macOS may prompt for Input Monitoring permission.
 - The window has a minimum size of 960 x 640 (`tauri.conf.json`); every tab must fit that without
   horizontal scrolling. The top bar is the tightest fit: below 1100 px wide the brand shows only
-  its logo; check it with a recording and a replay running when adding tabs or top bar items. Tabs scroll vertically if needed, with the themed thin scrollbars.
+  its logo, and below 1200 px the tabs are padded tighter: with six tabs, a recording and a replay
+  it only just fits at 1100 px. Check it with a recording and a replay running when adding tabs or top bar items. Tabs scroll vertically if needed, with the themed thin scrollbars.

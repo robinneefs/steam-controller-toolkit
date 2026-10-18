@@ -1,0 +1,751 @@
+import { invoke } from "@tauri-apps/api/core";
+import type { MidiMapping, MidiOutputChoice, MidiPreset, MidiScale, MidiTarget, PadGrid, Snapshot } from "../controller";
+import type { Tab } from "./tab";
+
+/** Buttons by their names in protocol.rs `buttons::NAMES`, with friendlier labels. */
+const BUTTONS: [string, string][] = [
+  ["A", "A"], ["B", "B"], ["X", "X"], ["Y", "Y"],
+  ["Up", "D-pad up"], ["Down", "D-pad down"], ["Left", "D-pad left"], ["Right", "D-pad right"],
+  ["L", "Left bumper"], ["R", "Right bumper"], ["LTrigClick", "Left trigger click"], ["RTrigClick", "Right trigger click"],
+  ["L4", "L4"], ["L5", "L5"], ["R4", "R4"], ["R5", "R5"],
+  ["L3", "L3 (stick click)"], ["R3", "R3 (stick click)"], ["LPadClick", "Left pad click"], ["RPadClick", "Right pad click"],
+  ["LPadTouch", "Left pad touch"], ["RPadTouch", "Right pad touch"], ["LStickTouch", "Left stick touch"],
+  ["RStickTouch", "Right stick touch"], ["LGrip", "Left grip touch"], ["RGrip", "Right grip touch"],
+  ["View", "View"], ["Menu", "Menu"], ["QAM", "Quick access"], ["Steam", "Steam"],
+];
+
+/** Every input a mapping can read. Axis keys mirror `AXES` in src-tauri/src/midi.rs. */
+const SOURCES: [string, [string, string][]][] = [
+  ["Triggers", [["trigger_left", "Left trigger"], ["trigger_right", "Right trigger"]]],
+  ["Sticks", [
+    ["left_stick_x", "Left stick X"], ["left_stick_y", "Left stick Y"],
+    ["right_stick_x", "Right stick X"], ["right_stick_y", "Right stick Y"],
+  ]],
+  ["Trackpads", [
+    ["left_pad_x", "Left pad X"], ["left_pad_y", "Left pad Y"], ["left_pad_pressure", "Left pad pressure"],
+    ["right_pad_x", "Right pad X"], ["right_pad_y", "Right pad Y"], ["right_pad_pressure", "Right pad pressure"],
+  ]],
+  ["Motion", [
+    ["tilt_pitch", "Tilt forward / back"], ["tilt_roll", "Tilt left / right"],
+    ["gyro_pitch", "Turn speed: pitch"], ["gyro_roll", "Turn speed: roll"], ["gyro_yaw", "Turn speed: yaw"],
+  ]],
+  ["Buttons", BUTTONS.map(([n, l]) => [`button:${n}`, l])],
+];
+const SOURCE_LABELS = new Map(SOURCES.flatMap(([, list]) => list));
+
+const KINDS: [MidiTarget["kind"], string, string][] = [
+  ["cc", "CC", "Control change: knobs and faders in the DAW (MIDI-learn it there)"],
+  ["pitch_bend", "Pitch bend", "Pitch bend; the middle of the input is no bend"],
+  ["channel_pressure", "Aftertouch", "Channel pressure (aftertouch)"],
+  ["note", "Note", "Note on while the input is past half, note off below"],
+  ["program", "Program", "Program change each time the input goes past half"],
+];
+
+const SCALES: [MidiScale, string][] = [
+  ["major_pentatonic", "Major pentatonic"], ["minor_pentatonic", "Minor pentatonic"],
+  ["major", "Major"], ["minor", "Minor"], ["dorian", "Dorian"], ["harmonic_minor", "Harmonic minor"],
+  ["blues", "Blues"], ["chromatic", "Chromatic"],
+];
+const SCALE_STEPS: Record<MidiScale, number[]> = {
+  chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 8, 10],
+  major_pentatonic: [0, 2, 4, 7, 9],
+  minor_pentatonic: [0, 3, 5, 7, 10],
+  blues: [0, 3, 5, 6, 7, 10],
+  dorian: [0, 2, 3, 5, 7, 9, 10],
+  harmonic_minor: [0, 2, 3, 5, 7, 8, 11],
+};
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+/** Note name with middle C (60) as C4. DAWs differ: Ableton calls 60 C3. */
+const noteName = (n: number) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
+const NOTE_OPTIONS = Array.from({ length: 128 }, (_, n) => `<option value="${n}">${noteName(n)} · ${n}</option>`).join("");
+const CHANNEL_OPTIONS = Array.from({ length: 16 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
+
+/** Note of a pad grid cell; mirrors `PadGrid::note` in midi.rs. */
+function gridNote(g: PadGrid, cell: number): number | null {
+  const cols = Math.max(1, g.cols);
+  const degree = Math.floor(cell / cols) * g.row_step + (cell % cols);
+  const steps = SCALE_STEPS[g.scale];
+  const n = g.root + 12 * Math.floor(degree / steps.length) + steps[degree % steps.length];
+  return n <= 127 ? n : null;
+}
+
+const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`);
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** One MIDI message as text, e.g. "CC 21 = 64". */
+function describe(b: number[]): string {
+  const [s, a, v] = b;
+  switch (s & 0xf0) {
+    case 0x90: return `Note on ${noteName(a)} · vel ${v}`;
+    case 0x80: return `Note off ${noteName(a)}`;
+    case 0xa0: return `Poly pressure ${noteName(a)} = ${v}`;
+    case 0xb0: return `CC ${a} = ${v}`;
+    case 0xc0: return `Program ${a}`;
+    case 0xd0: return `Aftertouch = ${a}`;
+    case 0xe0: return `Pitch bend ${((v << 7) | a) - 8192}`;
+    default: return b.map((x) => x.toString(16).padStart(2, "0")).join(" ");
+  }
+}
+
+function defaultTarget(kind: MidiTarget["kind"], cc: number): MidiTarget {
+  switch (kind) {
+    case "cc": return { kind, cc, hi_res: false };
+    case "note": return { kind, note: 60, velocity: 100 };
+    case "program": return { kind, program: 0 };
+    default: return { kind };
+  }
+}
+
+interface PresetInfo {
+  name: string;
+  builtin: boolean;
+}
+
+const encodeOutput = (o: MidiOutputChoice) => (o.kind === "port" ? `port:${o.name}` : o.kind);
+function decodeOutput(v: string): MidiOutputChoice {
+  return v.startsWith("port:") ? { kind: "port", name: v.slice(5) } : { kind: v as "off" | "virtual" };
+}
+
+/** Send controller input to a DAW as MIDI: mappings for effects, note grids on the trackpads. */
+export class MidiTab implements Tab {
+  id = "midi";
+  title = "MIDI";
+  private root!: HTMLElement;
+  private preset: MidiPreset | null = null;
+  private output: MidiOutputChoice = { kind: "off" };
+  private ports: string[] = [];
+  private virtualPort = false;
+  private presets: PresetInfo[] = [];
+  /** The saved or built-in preset the editor started from; `null` once it no longer matches one. */
+  private loaded: PresetInfo | null = null;
+  private edited = false;
+  private pushTimer: number | undefined;
+  private side: "left_pad" | "right_pad" = "right_pad";
+  /** Row waiting for learn, and whether the backend has reported it is listening. */
+  private learnRow: number | null = null;
+  private learnSeen = false;
+  private open = new Set<number>();
+  private lastLog = -1;
+  private lastStatus = "";
+  private deleteArmed = false;
+  private armTimer: number | undefined;
+
+  mount(root: HTMLElement): void {
+    this.root = root;
+    root.innerHTML = `
+      <div class="midi">
+        <section class="tile midi-bar">
+          <label class="bar-group" title="Where MIDI goes. Pick this port as a MIDI input in your DAW.">
+            <span class="muted">Output</span>
+            <select class="field" data-output></select>
+          </label>
+          <button class="mini" data-refresh title="Look for MIDI ports again">Refresh</button>
+          <span class="midi-conn" data-conn></span>
+          <span class="bar-group preset-group">
+            <span class="muted">Preset</span>
+            <select class="field" data-preset></select>
+            <input class="field" data-save-name placeholder="Preset name" maxlength="60" hidden />
+            <button class="mini" data-save title="Save the current mappings as a preset">Save as…</button>
+            <button class="mini" data-save-cancel hidden>Cancel</button>
+            <button class="mini danger" data-delete title="Delete this saved preset">Delete</button>
+            <button class="mini" data-folder title="Open the presets folder (share presets by copying the .json files)">Folder</button>
+          </span>
+          <button class="mini panic" data-panic title="Stop every sounding note on every channel">Panic</button>
+        </section>
+
+        <section class="tile midi-maps">
+          <h3>Mappings <span class="head-actions"><em data-map-count></em><button class="mini" data-add>+ Add</button></span></h3>
+          <div class="map-head"><span></span><span>Input</span><span></span><span>Sends</span><span></span><span>Ch</span><span></span><span></span></div>
+          <div class="map-list" data-maps></div>
+        </section>
+
+        <div class="midi-side">
+          <section class="tile midi-grid">
+            <h3>Pad notes
+              <span class="segmented" data-sides>
+                <button data-side="left_pad">Left pad</button><button data-side="right_pad">Right pad</button>
+              </span>
+            </h3>
+            <div data-grid></div>
+          </section>
+          <section class="tile midi-log">
+            <h3>Activity <em class="num" data-rate></em></h3>
+            <div class="log" data-log></div>
+          </section>
+        </div>
+      </div>`;
+
+    this.q("[data-output]").addEventListener("change", (e) => this.setOutput(decodeOutput((e.target as HTMLSelectElement).value)));
+    this.q("[data-refresh]").addEventListener("click", () => this.refreshPorts());
+    this.q("[data-panic]").addEventListener("click", () => invoke("midi_panic"));
+    this.q("[data-preset]").addEventListener("change", (e) => this.loadPreset((e.target as HTMLSelectElement).value));
+    this.q("[data-save]").addEventListener("click", () => this.saveClicked());
+    this.q("[data-save-cancel]").addEventListener("click", () => this.showSaveName(false));
+    this.q<HTMLInputElement>("[data-save-name]").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.saveClicked();
+      if (e.key === "Escape") this.showSaveName(false);
+    });
+    this.q("[data-delete]").addEventListener("click", () => this.deleteClicked());
+    this.q("[data-folder]").addEventListener("click", () => invoke("midi_reveal_presets").catch((e) => this.flash(String(e))));
+    this.q("[data-add]").addEventListener("click", () => this.addMapping());
+    this.q("[data-sides]").addEventListener("click", (e) => {
+      const b = (e.target as Element).closest<HTMLElement>("[data-side]");
+      if (!b) return;
+      this.side = b.dataset.side as "left_pad" | "right_pad";
+      this.renderGrid();
+    });
+
+    const list = this.q("[data-maps]");
+    list.addEventListener("change", (e) => this.mapFieldChanged(e.target as HTMLElement));
+    list.addEventListener("input", (e) => {
+      const el = e.target as HTMLInputElement;
+      if (el.type === "range" || el.type === "number") this.mapFieldChanged(el);
+    });
+    list.addEventListener("click", (e) => this.mapClicked(e.target as Element));
+
+    const grid = this.q("[data-grid]");
+    grid.addEventListener("change", (e) => this.gridFieldChanged(e.target as HTMLElement));
+    grid.addEventListener("click", (e) => {
+      const b = (e.target as Element).closest<HTMLElement>("[data-trigger]");
+      if (b) this.setGrid({ trigger: b.dataset.trigger as "touch" | "click" }, true);
+    });
+
+    this.init();
+  }
+
+  private async init(): Promise<void> {
+    try {
+      const setup = await invoke<{ preset: MidiPreset; output: MidiOutputChoice }>("midi_setup");
+      this.preset = setup.preset;
+      this.output = setup.output;
+      await Promise.all([this.refreshPorts(), this.refreshPresets()]);
+      this.loaded = this.presets.find((p) => p.name === this.preset!.name && !p.builtin) ??
+        this.presets.find((p) => p.name === this.preset!.name) ?? null;
+      this.renderPresets();
+      this.renderMaps();
+      this.renderGrid();
+    } catch (e) {
+      this.flash(String(e));
+    }
+  }
+
+  update(snap: Snapshot): void {
+    const m = snap.midi;
+    if (!m || !this.preset) return;
+    // Connection status.
+    const conn = m.connected
+      ? `<i class="ok"></i>Sending to <b>${escape(m.connected)}</b>`
+      : m.error
+        ? `<i class="warn"></i><span title="${escape(m.error)}">${escape(m.error)}</span>`
+        : `<i></i>Not sending`;
+    if (conn !== this.lastStatus) this.q("[data-conn]").innerHTML = this.lastStatus = conn;
+    const rate = m.connected ? `${m.rate} msg/s` : "";
+    const rateEl = this.q("[data-rate]");
+    if (rateEl.textContent !== rate) rateEl.textContent = rate;
+
+    // Meters.
+    this.root.querySelectorAll<HTMLElement>(".map-row").forEach((row) => {
+      const level = m.levels[Number(row.dataset.i)];
+      const bar = row.querySelector<HTMLElement>(".meter i")!;
+      const w = level == null ? "0%" : `${(level * 100).toFixed(1)}%`;
+      if (bar.style.width !== w) bar.style.width = w;
+      row.classList.toggle("idle", level == null);
+    });
+
+    // Pad grid.
+    const cell = m.cells[this.side === "left_pad" ? 0 : 1];
+    this.root.querySelectorAll<HTMLElement>(".grid-cells [data-cell]").forEach((el) => {
+      const on = cell?.[0] === Number(el.dataset.cell);
+      el.classList.toggle("hover", on && !cell![1]);
+      el.classList.toggle("on", on && cell![1]);
+    });
+
+    // Activity.
+    const last = m.log.length ? m.log[m.log.length - 1][0] : 0;
+    if (last !== this.lastLog) {
+      this.lastLog = last;
+      this.q("[data-log]").innerHTML = m.log.length
+        ? m.log.slice().reverse().map(([, b]) => `<div><span class="ch">ch ${(b[0] & 0x0f) + 1}</span>${describe(b)}</div>`).join("")
+        : `<p class="hint">${this.setupHint()}</p>`;
+    }
+
+    // Learn.
+    if (this.learnRow !== null) {
+      if (m.learning) this.learnSeen = true;
+      else if (this.learnSeen && m.learned) {
+        const i = this.learnRow;
+        this.stopLearn(false);
+        this.preset.mappings[i].source = m.learned;
+        this.renderMaps();
+        this.push();
+      }
+    }
+  }
+
+  hide(): void {
+    this.stopLearn(true);
+  }
+
+  private setupHint(): string {
+    if (this.output.kind !== "off") return "Nothing sent yet. Move a mapped control.";
+    return this.virtualPort
+      ? `Pick <b>Steam Controller (virtual port)</b> as the output, then choose it as a MIDI input in your DAW.`
+      : `Windows needs a loopback MIDI port: create one in Windows MIDI Services (MIDI Settings → Loopback endpoints)
+         or with loopMIDI, press Refresh, pick it as the output here and as a MIDI input in your DAW.`;
+  }
+
+  private q<T extends HTMLElement = HTMLElement>(sel: string): T {
+    return this.root.querySelector<T>(sel)!;
+  }
+
+  private flash(text: string): void {
+    const el = this.q("[data-log]");
+    el.innerHTML = `<p class="hint error">${escape(text)}</p>`;
+    this.lastLog = -1;
+  }
+
+  // ---------- Output ----------
+
+  private async refreshPorts(): Promise<void> {
+    try {
+      const r = await invoke<{ ports: string[]; virtual_port: boolean }>("midi_ports");
+      this.ports = r.ports;
+      this.virtualPort = r.virtual_port;
+    } catch (e) {
+      this.ports = [];
+      this.flash(String(e));
+    }
+    this.renderOutput();
+  }
+
+  private renderOutput(): void {
+    const opts: [string, string][] = [["off", "Off"]];
+    if (this.virtualPort) opts.push(["virtual", "Steam Controller (virtual port)"]);
+    for (const p of this.ports) opts.push([`port:${p}`, p]);
+    const current = encodeOutput(this.output);
+    if (!opts.some(([v]) => v === current) && this.output.kind === "port") opts.push([current, `${this.output.name} (not found)`]);
+    const sel = this.q<HTMLSelectElement>("[data-output]");
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${escape(v)}">${escape(l)}</option>`).join("");
+    sel.value = current;
+  }
+
+  private async setOutput(o: MidiOutputChoice): Promise<void> {
+    this.output = o;
+    this.lastLog = -1;
+    try {
+      await invoke("midi_set_output", { output: o });
+    } catch (e) {
+      this.flash(String(e));
+    }
+  }
+
+  // ---------- Presets ----------
+
+  private async refreshPresets(): Promise<void> {
+    this.presets = await invoke<PresetInfo[]>("midi_list_presets");
+  }
+
+  private renderPresets(): void {
+    const opt = (p: PresetInfo) => `<option value="${p.builtin ? "b" : "s"}:${escape(p.name)}">${escape(p.name)}</option>`;
+    const builtin = this.presets.filter((p) => p.builtin);
+    const saved = this.presets.filter((p) => !p.builtin);
+    const sel = this.q<HTMLSelectElement>("[data-preset]");
+    const unsaved = !this.loaded ? `<option value="">${escape(this.preset?.name || "Custom")} (unsaved)</option>` : "";
+    sel.innerHTML = unsaved +
+      `<optgroup label="Built-in">${builtin.map(opt).join("")}</optgroup>` +
+      (saved.length ? `<optgroup label="Saved">${saved.map(opt).join("")}</optgroup>` : "");
+    sel.value = this.loaded ? `${this.loaded.builtin ? "b" : "s"}:${this.loaded.name}` : "";
+    sel.classList.toggle("edited", this.edited);
+    sel.title = this.edited ? "Changed since it was loaded; Save as… to keep the changes" : "";
+    this.q("[data-delete]").hidden = !this.loaded || this.loaded.builtin;
+    this.disarmDelete();
+  }
+
+  private async loadPreset(value: string): Promise<void> {
+    if (!value) return;
+    const builtin = value.startsWith("b:");
+    const name = value.slice(2);
+    try {
+      this.stopLearn(true);
+      this.preset = await invoke<MidiPreset>("midi_load_preset", { name, builtin });
+      this.loaded = { name, builtin };
+      this.edited = false;
+      this.open.clear();
+      this.renderPresets();
+      this.renderMaps();
+      this.renderGrid();
+    } catch (e) {
+      this.flash(String(e));
+      this.renderPresets();
+    }
+  }
+
+  private showSaveName(on: boolean): void {
+    const input = this.q<HTMLInputElement>("[data-save-name]");
+    input.hidden = !on;
+    this.q("[data-preset]").hidden = on;
+    this.q("[data-save-cancel]").hidden = !on;
+    this.q("[data-save]").textContent = on ? "Save" : "Save as…";
+    this.q("[data-delete]").hidden = on || !this.loaded || this.loaded.builtin;
+    this.q("[data-folder]").hidden = on;
+    if (on) {
+      input.value = this.loaded && !this.loaded.builtin ? this.loaded.name : "";
+      input.focus();
+      input.select();
+    }
+  }
+
+  private async saveClicked(): Promise<void> {
+    const input = this.q<HTMLInputElement>("[data-save-name]");
+    if (input.hidden) return this.showSaveName(true);
+    const name = input.value.trim();
+    if (!name) return input.focus();
+    try {
+      await this.flush();
+      await invoke("midi_save_preset", { name });
+      this.preset!.name = name;
+      this.loaded = { name, builtin: false };
+      this.edited = false;
+      await this.refreshPresets();
+      this.showSaveName(false);
+      this.renderPresets();
+    } catch (e) {
+      this.flash(String(e));
+    }
+  }
+
+  private async deleteClicked(): Promise<void> {
+    if (!this.loaded || this.loaded.builtin) return;
+    const b = this.q("[data-delete]");
+    if (!this.deleteArmed) {
+      this.deleteArmed = true;
+      b.classList.add("armed");
+      b.textContent = "Click to delete";
+      this.armTimer = window.setTimeout(() => this.disarmDelete(), 3000);
+      return;
+    }
+    try {
+      await invoke("midi_delete_preset", { name: this.loaded.name });
+      // The mappings stay as they are; they are just not saved anywhere now.
+      this.loaded = null;
+      await this.refreshPresets();
+      this.renderPresets();
+    } catch (e) {
+      this.flash(String(e));
+    }
+  }
+
+  private disarmDelete(): void {
+    clearTimeout(this.armTimer);
+    this.deleteArmed = false;
+    const b = this.q("[data-delete]");
+    b.classList.remove("armed");
+    b.textContent = "Delete";
+  }
+
+  /** Send the edited preset to the backend soon, coalescing quick edits like slider drags. */
+  private push(): void {
+    if (!this.edited) {
+      this.edited = true;
+      this.renderPresets();
+    }
+    clearTimeout(this.pushTimer);
+    this.pushTimer = window.setTimeout(() => this.flush(), 50);
+  }
+
+  private async flush(): Promise<void> {
+    clearTimeout(this.pushTimer);
+    if (this.preset) await invoke("midi_set_preset", { preset: this.preset }).catch((e) => this.flash(String(e)));
+  }
+
+  // ---------- Mappings ----------
+
+  private renderMaps(): void {
+    const maps = this.preset?.mappings ?? [];
+    this.q("[data-map-count]").textContent = maps.length ? String(maps.length) : "";
+    this.q("[data-maps]").innerHTML = maps.length
+      ? maps.map((m, i) => this.mapRow(m, i)).join("")
+      : `<p class="hint">No mappings. Add one, or load a preset.</p>`;
+    maps.forEach((m, i) => {
+      const row = this.root.querySelector<HTMLElement>(`.map-row[data-i="${i}"]`)!;
+      row.querySelectorAll<HTMLSelectElement>("select[data-f]").forEach((s) => (s.value = this.selectValue(m, s.dataset.f!)));
+    });
+  }
+
+  private selectValue(m: MidiMapping, f: string): string {
+    const t = m.target as Record<string, unknown>;
+    switch (f) {
+      case "source": return m.source;
+      case "kind": return m.target.kind;
+      case "channel": return String(m.channel);
+      case "hold": return m.hold ?? "";
+      default: return String(t[f] ?? "");
+    }
+  }
+
+  private mapRow(m: MidiMapping, i: number): string {
+    const sourceOpts = SOURCES.map(([g, list]) =>
+      `<optgroup label="${g}">${list.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</optgroup>`).join("") +
+      (SOURCE_LABELS.has(m.source) ? "" : `<option value="${escape(m.source)}">${escape(m.source)} (unknown)</option>`);
+    const t = m.target;
+    const args =
+      t.kind === "cc"
+        ? `<input class="field num" type="number" data-f="cc" min="0" max="127" value="${t.cc}" title="Controller number (0–127)" />
+           <label class="chk" title="14-bit: also sends CC ${t.cc + 32} for finer steps (CC 0–31 only)"><input type="checkbox" data-f="hi_res" ${t.hi_res ? "checked" : ""} ${t.cc < 32 ? "" : "disabled"} />14-bit</label>`
+        : t.kind === "note"
+          ? `<select class="field" data-f="note" title="Note">${NOTE_OPTIONS}</select>
+             <input class="field num" type="number" data-f="velocity" min="1" max="127" value="${t.velocity}" title="Velocity (1–127)" />`
+          : t.kind === "program"
+            ? `<input class="field num" type="number" data-f="program" min="0" max="127" value="${t.program}" title="Program number (0–127; many DAWs show it as 1–128)" />`
+            : "";
+    const pct = (v: number) => Math.round(v * 100);
+    const holdOpts = `<option value="">Always</option>` + BUTTONS.map(([n, l]) => `<option value="${n}">While ${l} held</option>`).join("");
+    const learning = this.learnRow === i;
+    return `
+      <div class="map-row${m.enabled ? "" : " off"}" data-i="${i}">
+        <div class="map-main">
+          <input type="checkbox" data-f="enabled" ${m.enabled ? "checked" : ""} title="On / off" />
+          <select class="field" data-f="source" title="Input">${sourceOpts}</select>
+          <button class="icon-btn${learning ? " learning" : ""}" data-learn title="${learning ? "Move a control now… (click to cancel)" : "Learn: click, then move or press a control"}">${learning ? "…" : "◎"}</button>
+          <select class="field" data-f="kind" title="${KINDS.find(([k]) => k === t.kind)?.[2] ?? ""}">${KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+          <span class="args">${args}</span>
+          <select class="field ch" data-f="channel" title="MIDI channel">${CHANNEL_OPTIONS}</select>
+          <button class="icon-btn${this.open.has(i) ? " on" : ""}" data-more title="Shaping: range, deadzone, curve, smoothing, toggle">⋯</button>
+          <button class="icon-btn" data-del title="Remove">×</button>
+        </div>
+        <span class="meter"><i></i></span>
+        <div class="map-more" ${this.open.has(i) ? "" : "hidden"}>
+          <label title="Part of the input's travel that spans the output, in %">Range
+            <input class="field num" type="number" data-f="range0" min="0" max="100" value="${pct(m.range[0])}" />–<input class="field num" type="number" data-f="range1" min="0" max="100" value="${pct(m.range[1])}" />%</label>
+          <label title="Travel around the centre (or at the bottom) that counts as rest, in %">Deadzone
+            <input class="field num" type="number" data-f="deadzone" min="0" max="90" value="${pct(m.deadzone)}" />%</label>
+          <label title="Left: reacts fast near rest. Right: slow near rest, for fine control">Curve
+            <input type="range" data-f="curve" min="-100" max="100" value="${pct(m.curve)}" /></label>
+          <label title="Evens out shaky input such as tilt; more smoothing lags more">Smooth
+            <input type="range" data-f="smoothing" min="0" max="95" value="${pct(m.smoothing)}" /></label>
+          <label class="chk" title="Output from 1 down to 0"><input type="checkbox" data-f="invert" ${m.invert ? "checked" : ""} />Invert</label>
+          <label class="chk" title="Each press flips the output on or off (a latch)"><input type="checkbox" data-f="toggle" ${m.toggle ? "checked" : ""} />Toggle</label>
+          <label title="Only send while a button is held, e.g. tilt only while R4 is down">Active
+            <select class="field" data-f="hold">${holdOpts}</select></label>
+        </div>
+      </div>`;
+  }
+
+  private mapFieldChanged(el: HTMLElement): void {
+    const row = el.closest<HTMLElement>(".map-row");
+    const f = el.dataset.f;
+    if (!row || !f || !this.preset) return;
+    const i = Number(row.dataset.i);
+    const m = this.preset.mappings[i];
+    const input = el as HTMLInputElement;
+    const num = (lo: number, hi: number) => clamp(Math.round(Number(input.value) || 0), lo, hi);
+    const t = m.target as Record<string, unknown>;
+    switch (f) {
+      case "enabled":
+        m.enabled = input.checked;
+        row.classList.toggle("off", !m.enabled);
+        break;
+      case "source":
+        m.source = input.value;
+        break;
+      case "kind": {
+        const cc = m.target.kind === "cc" ? m.target.cc : this.freeCc();
+        m.target = defaultTarget(input.value as MidiTarget["kind"], cc);
+        this.rerenderRow(i);
+        break;
+      }
+      case "cc":
+        if (input.value === "") return;
+        t.cc = num(0, 127);
+        if ((t.cc as number) >= 32) t.hi_res = false;
+        {
+          // Edit the 14-bit box in place: redrawing the row would steal focus while typing.
+          const hr = row.querySelector<HTMLInputElement>('[data-f="hi_res"]')!;
+          hr.disabled = (t.cc as number) >= 32;
+          hr.checked = !!t.hi_res;
+          hr.parentElement!.title = `14-bit: also sends CC ${(t.cc as number) + 32} for finer steps (CC 0–31 only)`;
+        }
+        break;
+      case "hi_res":
+        t.hi_res = input.checked;
+        break;
+      case "note":
+        t.note = Number(input.value);
+        break;
+      case "velocity":
+        if (input.value === "") return;
+        t.velocity = num(1, 127);
+        break;
+      case "program":
+        if (input.value === "") return;
+        t.program = num(0, 127);
+        break;
+      case "channel":
+        m.channel = Number(input.value);
+        break;
+      case "range0":
+      case "range1":
+        if (input.value === "") return;
+        m.range[f === "range0" ? 0 : 1] = num(0, 100) / 100;
+        break;
+      case "deadzone":
+        if (input.value === "") return;
+        m.deadzone = num(0, 90) / 100;
+        break;
+      case "curve":
+        m.curve = num(-100, 100) / 100;
+        break;
+      case "smoothing":
+        m.smoothing = num(0, 95) / 100;
+        break;
+      case "invert":
+        m.invert = input.checked;
+        break;
+      case "toggle":
+        m.toggle = input.checked;
+        break;
+      case "hold":
+        m.hold = input.value || null;
+        break;
+      default:
+        return;
+    }
+    this.push();
+  }
+
+  private rerenderRow(i: number): void {
+    const row = this.root.querySelector<HTMLElement>(`.map-row[data-i="${i}"]`);
+    if (!row || !this.preset) return;
+    const m = this.preset.mappings[i];
+    row.outerHTML = this.mapRow(m, i);
+    const fresh = this.root.querySelector<HTMLElement>(`.map-row[data-i="${i}"]`)!;
+    fresh.querySelectorAll<HTMLSelectElement>("select[data-f]").forEach((s) => (s.value = this.selectValue(m, s.dataset.f!)));
+  }
+
+  private mapClicked(el: Element): void {
+    const row = el.closest<HTMLElement>(".map-row");
+    if (!row || !this.preset) return;
+    const i = Number(row.dataset.i);
+    if (el.closest("[data-del]")) {
+      this.stopLearn(true);
+      this.preset.mappings.splice(i, 1);
+      // Rows below shift up by one; so do their open panels.
+      this.open = new Set([...this.open].filter((n) => n !== i).map((n) => (n > i ? n - 1 : n)));
+      this.renderMaps();
+      this.push();
+    } else if (el.closest("[data-more]")) {
+      if (this.open.has(i)) this.open.delete(i);
+      else this.open.add(i);
+      row.querySelector<HTMLElement>(".map-more")!.hidden = !this.open.has(i);
+      row.querySelector("[data-more]")!.classList.toggle("on", this.open.has(i));
+    } else if (el.closest("[data-learn]")) {
+      if (this.learnRow === i) this.stopLearn(true);
+      else this.startLearn(i);
+    }
+  }
+
+  private async startLearn(i: number): Promise<void> {
+    const prev = this.learnRow;
+    this.learnRow = i;
+    this.learnSeen = false;
+    if (prev !== null) this.rerenderRow(prev);
+    this.rerenderRow(i);
+    await invoke("midi_learn", { on: true });
+  }
+
+  private stopLearn(cancel: boolean): void {
+    if (this.learnRow === null) return;
+    const i = this.learnRow;
+    this.learnRow = null;
+    if (cancel) invoke("midi_learn", { on: false });
+    this.rerenderRow(i);
+  }
+
+  /** The lowest CC from 20 up that no mapping uses yet. */
+  private freeCc(): number {
+    const used = new Set(this.preset!.mappings.flatMap((m) => (m.target.kind === "cc" ? [m.target.cc] : [])));
+    for (let cc = 20; cc < 120; cc++) if (!used.has(cc)) return cc;
+    return 20;
+  }
+
+  private addMapping(): void {
+    if (!this.preset) return;
+    this.preset.mappings.push({
+      enabled: true, source: "trigger_right", target: { kind: "cc", cc: this.freeCc(), hi_res: false }, channel: 1,
+      range: [0, 1], invert: false, deadzone: 0, curve: 0, smoothing: 0, toggle: false, hold: null,
+    });
+    this.renderMaps();
+    this.push();
+    const list = this.q("[data-maps]");
+    list.scrollTop = list.scrollHeight;
+    // Learn right away: the next control moved becomes the input.
+    this.startLearn(this.preset.mappings.length - 1);
+  }
+
+  // ---------- Pad grids ----------
+
+  private renderGrid(): void {
+    this.root.querySelectorAll<HTMLElement>("[data-side]").forEach((b) => b.classList.toggle("on", b.dataset.side === this.side));
+    if (!this.preset) return;
+    const g = this.preset[this.side];
+    const cols = clamp(g.cols, 1, 8);
+    const rows = clamp(g.rows, 1, 8);
+    const cells: string[] = [];
+    // Row 0 is at the bottom, like the pad.
+    for (let r = rows - 1; r >= 0; r--) {
+      for (let c = 0; c < cols; c++) {
+        const cell = r * cols + c;
+        const n = gridNote(g, cell);
+        const root = n !== null && (n - g.root) % 12 === 0;
+        cells.push(`<span data-cell="${cell}" class="${root ? "root" : ""}" title="${n === null ? "Out of range" : `${noteName(n)} · ${n}`}">${n === null ? "" : noteName(n)}</span>`);
+      }
+    }
+    const sel = (f: string, opts: [string | number, string][], v: string | number, title = "") =>
+      `<select class="field" data-g="${f}" title="${title}">${opts.map(([k, l]) => `<option value="${k}"${String(k) === String(v) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    const sizes = Array.from({ length: 8 }, (_, i) => [i + 1, String(i + 1)] as [number, string]);
+    this.q("[data-grid]").innerHTML = `
+      <div class="grid-wrap${g.enabled ? "" : " off"}">
+        <label class="chk grid-enable"><input type="checkbox" data-g="enabled" ${g.enabled ? "checked" : ""} />Play notes on the ${this.side === "left_pad" ? "left" : "right"} pad</label>
+        <div class="grid-body">
+          <div class="grid-cells" style="grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, 1fr)">${cells.join("")}</div>
+          <div class="grid-form">
+            <label>Root ${sel("root", Array.from({ length: 128 }, (_, n) => [n, `${noteName(n)} · ${n}`]), g.root, "Note of the bottom-left cell")}</label>
+            <label>Scale ${sel("scale", SCALES, g.scale)}</label>
+            <label>Grid ${sel("cols", sizes, g.cols, "Columns")}<span class="muted">×</span>${sel("rows", sizes, g.rows, "Rows")}</label>
+            <label title="Scale steps from one row to the next; same as the columns plays one continuous run">Row step ${sel("row_step", Array.from({ length: 12 }, (_, i) => [i + 1, String(i + 1)]), g.row_step)}</label>
+            <label>Channel ${sel("channel", Array.from({ length: 16 }, (_, i) => [i + 1, String(i + 1)]), g.channel)}</label>
+            <label title="What starts a note">Play on <span class="segmented"><button data-trigger="touch" class="${g.trigger === "touch" ? "on" : ""}">Touch</button><button data-trigger="click" class="${g.trigger === "click" ? "on" : ""}">Click</button></span></label>
+            <label>Velocity <input class="field num" type="number" data-g="velocity" min="1" max="127" value="${g.velocity}" ${g.dynamic_velocity ? "disabled" : ""} />
+              <span class="chk" title="Velocity from how hard you press when the note starts"><input type="checkbox" data-g="dynamic_velocity" ${g.dynamic_velocity ? "checked" : ""} />By pressure</span></label>
+            <label title="Send pad pressure while a note is held">Pressure ${sel("pressure", [["off", "Off"], ["poly", "Poly aftertouch"], ["channel", "Channel aftertouch"]], g.pressure)}</label>
+            <label class="chk" title="Sliding onto another cell while held plays it (otherwise the first note keeps playing)"><input type="checkbox" data-g="slide" ${g.slide ? "checked" : ""} />Slide between notes</label>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  private gridFieldChanged(el: HTMLElement): void {
+    const f = el.dataset.g;
+    if (!f || !this.preset) return;
+    const input = el as HTMLInputElement;
+    const g = this.preset[this.side] as unknown as Record<string, unknown>;
+    if (input.type === "checkbox") g[f] = input.checked;
+    else if (f === "scale" || f === "pressure") g[f] = input.value;
+    else {
+      if (input.value === "") return;
+      g[f] = clamp(Math.round(Number(input.value) || 0), f === "root" ? 0 : 1, f === "root" || f === "velocity" ? 127 : 16);
+    }
+    // The cells' notes depend on most fields; redraw unless only the velocity changed.
+    this.setGrid({}, f !== "velocity");
+  }
+
+  private setGrid(change: Partial<PadGrid>, redraw: boolean): void {
+    if (!this.preset) return;
+    Object.assign(this.preset[this.side], change);
+    if (redraw) this.renderGrid();
+    this.push();
+  }
+}

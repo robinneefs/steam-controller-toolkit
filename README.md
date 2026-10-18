@@ -50,6 +50,30 @@ Play every haptic effect the controller supports, on the left, right or both act
 
 ![Haptics tab: rumble, taps, pulse trains, tone with a piano keyboard and sweeps](docs/screenshots/haptics.png)
 
+### MIDI
+
+Use the controller as a MIDI controller in your DAW (Ableton Live, FL Studio, Bitwig, Reaper,
+Logic…), to move effect knobs or play notes:
+
+- **Mappings**: any input (triggers, stick and trackpad axes, pad pressure, tilt, turn speed,
+  every button) to a **CC** (7- or 14-bit), **pitch bend**, **aftertouch**, a **note** or a
+  **program change**, on any channel. Each mapping has a range, deadzone, curve, smoothing,
+  invert, toggle (latch) and an optional *only while a button is held* switch, so tilt can
+  bend a filter only while you hold a back button. **Learn** picks the input: click it, then
+  move or press a control.
+- **Pad notes**: play either trackpad as a grid of notes (1×1 up to 8×8) in a scale, by touch
+  or click, with sliding between notes and pad pressure as aftertouch.
+- **Presets**: *Effects + drums* (the default), *Pad instrument* and *Effects only* are built
+  in; save your own (plain JSON files in the app's data folder, easy to share).
+- A live meter per mapping, the latest messages sent, and a *Panic* button for stuck notes.
+- A recording that plays back drives MIDI too, so a take can be replayed into the DAW.
+
+**Where the MIDI goes**: on macOS and Linux the app creates a *Steam Controller* MIDI port
+that your DAW lists as an input. Windows can't do that, so create a loopback port first, with
+Windows MIDI Services (*MIDI Settings → Loopback endpoints*) or the free
+[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), pick it as the output in
+the MIDI tab, and as an input in your DAW.
+
 ### Raw data
 
 ![Raw data tab: connection details, colour-coded byte map, decoded inputs and motion](docs/screenshots/raw-data.png)
@@ -90,7 +114,7 @@ Record a session and play it back without a controller:
 
 ![About tab: version, links, credits and licenses](docs/screenshots/about.png)
 
-More tools (stick tester, gyro mouse) are planned. See
+More tools (stick tester, gyro mouse, other output types next to MIDI) are planned. See
 [docs/PROTOCOL.md](docs/PROTOCOL.md) for how the communication with the controller works.
 
 ## Requirements
@@ -104,6 +128,7 @@ More tools (stick tester, gyro mouse) are planned. See
   the Desktop Layout bindings if that gets in the way.
 - **Linux**: your user needs access to the controller's `hidraw` devices. Steam installs a udev
   rule for this; without Steam, see [docs/PROTOCOL.md](docs/PROTOCOL.md#platform-notes).
+- **MIDI on Windows** needs a loopback MIDI port (see [MIDI](#midi)).
 
 ## Download
 
@@ -120,7 +145,8 @@ Installers (`.msi`/setup `.exe`, `.dmg`, `.deb`/`.rpm`) are there too if you pre
 ## Building from source
 
 1. Install [Rust](https://rustup.rs), [Node.js](https://nodejs.org) 20+ and the
-   [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+   [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS. On Linux also
+   `libudev-dev` (HID) and `libasound2-dev` (MIDI).
 2. Install dependencies and start the app:
 
 ```bash
@@ -156,8 +182,8 @@ npm run probe -- --raw --seconds 10
 | Path | What it is |
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
-| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, Raw data, Recorder and About tabs |
+| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, Raw data, Recorder and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |
