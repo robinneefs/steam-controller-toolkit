@@ -101,13 +101,13 @@ fn stop_recording(tape: State<'_, SharedTape>) -> Result<(), String> {
 
 /// Recordings in the recordings folder, newest first.
 #[tauri::command]
-fn list_recordings(tape: State<'_, SharedTape>) -> Vec<RecordingInfo> {
-    tape.lock().unwrap().list()
+async fn list_recordings(tape: State<'_, SharedTape>) -> Result<Vec<RecordingInfo>, String> {
+    Ok(tape.lock().unwrap().list())
 }
 
 /// Replay a recording in place of live input.
 #[tauri::command]
-fn play_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
+async fn play_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
     tape.lock().unwrap().play(&name)
 }
 
@@ -117,19 +117,24 @@ fn control_playback(action: PlaybackAction, tape: State<'_, SharedTape>) -> Resu
 }
 
 #[tauri::command]
-fn delete_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
+async fn delete_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
     tape.lock().unwrap().delete(&name)
 }
 
 /// Show a recording in the file manager, or open the recordings folder if `name` is None.
 #[tauri::command]
-fn reveal_recording(name: Option<String>, app: AppHandle, tape: State<'_, SharedTape>) -> Result<(), String> {
-    let tape = tape.lock().unwrap();
-    match name {
-        Some(name) => app.opener().reveal_item_in_dir(tape.file(&name)?),
+async fn reveal_recording(name: Option<String>, app: AppHandle, tape: State<'_, SharedTape>) -> Result<(), String> {
+    // Look the path up, then let go of the tape: the file manager can take seconds to answer,
+    // and the emit loop needs the lock meanwhile.
+    let (file, dir) = {
+        let tape = tape.lock().unwrap();
+        (name.map(|name| tape.file(&name)).transpose()?, tape.dir().to_path_buf())
+    };
+    match file {
+        Some(file) => app.opener().reveal_item_in_dir(file),
         None => {
-            std::fs::create_dir_all(tape.dir()).map_err(|e| e.to_string())?;
-            app.opener().open_path(tape.dir().to_string_lossy(), None::<&str>)
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            app.opener().open_path(dir.to_string_lossy(), None::<&str>)
         }
     }
     .map_err(|e| e.to_string())
@@ -137,7 +142,7 @@ fn reveal_recording(name: Option<String>, app: AppHandle, tape: State<'_, Shared
 
 /// Copy recordings dropped on the window into the recordings folder; returns their names.
 #[tauri::command]
-fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> Result<Vec<String>, String> {
+async fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> Result<Vec<String>, String> {
     let mut tape = tape.lock().unwrap();
     paths.iter().map(|p| tape.import(p)).collect()
 }
