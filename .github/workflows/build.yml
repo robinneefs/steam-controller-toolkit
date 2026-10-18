@@ -88,6 +88,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          release="repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}"
+          # tauri-action already uploaded its own copy of the AppImage; keep only the portable one.
+          if [ "${{ matrix.name }}" = linux ]; then
+            for id in $(gh api "$release" --jq '.assets[] | select(.name | endswith(".AppImage")) | .id'); do
+              gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
+            done
+          fi
           for f in portable/*; do
             gh api -X POST -H "Content-Type: application/octet-stream" --input "$f" \
               "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}/assets?name=$(basename "$f")"
