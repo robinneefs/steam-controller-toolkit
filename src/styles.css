@@ -413,6 +413,7 @@ a:hover { text-decoration: underline; }
 
 /* ---------- Haptics ---------- */
 
+/* Fits the default window without scrolling; scrolls only near the minimum size. */
 .haptics {
   height: 100%;
   overflow-y: auto;
@@ -420,22 +421,23 @@ a:hover { text-decoration: underline; }
   padding-right: 6px;
   scrollbar-gutter: stable;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
   align-content: start;
 }
-.haptics .wide { grid-column: 1 / -1; }
-.haptics > .tile { min-height: auto; }
-.haptics .hint { margin: -2px 0 10px; color: var(--muted); font-size: 13px; }
-.haptics-bar { display: flex; align-items: center; gap: 24px; }
-.haptics-bar .hslider { flex: 0 1 260px; margin: 0; }
-.bar-group { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.haptics > .tile { min-height: auto; padding: 12px 14px; }
+.haptics .tile h3 { margin-bottom: 4px; }
+.haptics .tone { grid-column: span 2; }
+.haptics .hint { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+.haptics-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 24px; padding: 8px 14px !important; }
+.haptics-bar .hslider { flex: 0 1 300px; margin: 0; }
+.bar-group { display: flex; align-items: center; gap: 10px; font-weight: 500; white-space: nowrap; }
 .bar-group .segmented button { padding: 4px 14px; font-size: 13px; }
 .last-sent { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 500; white-space: nowrap; }
 .last-sent code { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 2px 6px; font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--accent-2); }
 .last-sent code.error { color: #ffb3b3; }
 
-.hslider { display: grid; grid-template-columns: 70px minmax(0, 1fr) 3.2em 1.6em; align-items: center; gap: 10px; margin: 6px 0; font-weight: 500; }
+.hslider { display: grid; grid-template-columns: 62px minmax(0, 1fr) 3em 1.6em; align-items: center; gap: 8px; margin: 2px 0; font-weight: 500; }
 .hslider > span { color: var(--muted); white-space: nowrap; }
 .hslider b { text-align: right; font-weight: 600; }
 .hslider small { color: var(--muted); }
@@ -447,14 +449,15 @@ input[type="range"]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 5px #1a9fff3
 input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: #ffffff1c; }
 input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--accent); }
 
-.effect-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.effect-grid .gbtn { justify-content: center; padding: 9px 4px; }
+.tap-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tap-row .gbtn { justify-content: center; padding: 7px 4px; }
 .gbtn:active { background: #1a9fff55; }
-.script-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.script-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.script-row .gbtn { padding: 5px 14px; }
 .script-row .hslider { flex: 1; margin: 0; }
 .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
 
-.piano { position: relative; display: flex; height: 92px; margin-top: 12px; }
+.piano { position: relative; display: flex; height: 76px; margin-top: 8px; }
 .piano button { padding: 0; border: 0; cursor: pointer; }
 .piano .white {
   flex: 1;

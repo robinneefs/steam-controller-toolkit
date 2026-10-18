@@ -48,9 +48,10 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
   driver never uses it, but it works on this controller (verified over the Puck dongle).
 - Haptics: output reports `0x80`..`0x85` (rumble, pulse, built-in effect, tone, sweep, script;
   `protocol::Haptic`), sent with `Hub::send(slot, Command::Haptic { .. })`. All verified on
-  hardware. `side` is a bitmask: 1 left, 2 right, 3 both (0 = left). A rumble stops ~50 ms
+  hardware. `side` is 0 left, 1 right, 2 both (3+ = nothing; test with a thumb on each
+  trackpad, not by the grips). Effects 0x82 only play tick/click; scripts 18+ are empty. A rumble stops ~50 ms
   after the last report, so `read_loop` resends it every 40 ms until both speeds are 0.
-  `cargo run -p sc-core --example haptics [-- --identify]` tests them.
+  `cargo run -p sc-core --example haptics [-- --buzz N click]` tests them.
 - Input report `0x42` (54 bytes, includes orientation quaternion) observed at ~265 Hz.
   `0x45` has no quaternion, `0x47` adds a trackpad timestamp. `0x43` battery, `0x79`/`0x46`
   wireless connect/disconnect. `0x7b` seen but undecoded.

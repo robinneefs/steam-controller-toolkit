@@ -2,11 +2,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { hex, type Haptic, type Snapshot } from "../controller";
 import type { Tab } from "./tab";
 
-/** Values of the `side` field: a bitmask, 1 left, 2 right (0 also plays on the left). */
-const SIDES: [string, number][] = [["Left", 1], ["Right", 2], ["Both", 3]];
+/** Values of the `side` field (verified by hand; 3 and up play nothing). */
+const SIDES: [string, number][] = [["Left", 0], ["Right", 1], ["Both", 2]];
 
-/** Built-in effects of the haptic command report (`haptic_type_t` in SDL's controller_structs.h). */
-const EFFECTS: [string, number][] = [["Tick", 1], ["Click", 2], ["Tone", 3], ["Rumble", 4], ["Noise", 5]];
+/**
+ * Built-in effects of the haptic command report (`haptic_type_t` in SDL's controller_structs.h)
+ * that play on their own. Tone (3), rumble (4) and noise (5) do nothing without more parameters.
+ */
+const TAPS: [string, number, string][] = [
+  ["Tick", 1, "A light tick, like a detent on a scroll wheel"],
+  ["Click", 2, "A firm click, like pressing a button"],
+];
+
+/** Firmware scripts 18 and up are empty. */
+const LAST_SCRIPT = 17;
 
 /** Two octaves of keys for the tone piano, from C4. */
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -24,10 +33,12 @@ interface Slider {
   step?: number;
   value: number;
   unit: string;
+  /** What the value does, shown on hover. */
+  tip: string;
 }
 
 const slider = (s: Slider) => `
-  <label class="hslider">
+  <label class="hslider" title="${s.tip}">
     <span>${s.label}</span>
     <input type="range" data-s="${s.key}" min="${s.min}" max="${s.max}" step="${s.step ?? 1}" value="${s.value}" />
     <b class="num" data-v="${s.key}"></b><small>${s.unit}</small>
@@ -49,58 +60,62 @@ export class HapticsTab implements Tab {
     this.root = root;
     root.innerHTML = `
       <div class="haptics">
-        <section class="tile wide haptics-bar">
-          <span class="bar-group"><span class="muted">Actuator</span>
+        <section class="tile haptics-bar">
+          <span class="bar-group" title="Which trackpad's actuator plays taps, scripts, pulses, tones and sweeps">
+            <span class="muted">Plays on</span>
             <span class="segmented" data-sides>${SIDES.map(([l, v]) => `<button data-side="${v}">${l}</button>`).join("")}</span>
           </span>
-          ${slider({ key: "gain", label: "Gain", min: -24, max: 6, value: 0, unit: "dB" })}
-          <span class="last-sent"><span class="muted">Sent</span> <code data-sent data-copy>–</code></span>
+          ${slider({ key: "gain", label: "Strength", min: -24, max: 0, value: 0, unit: "dB", tip: "Volume of taps, scripts, tones and sweeps. 0 dB is full strength; every -6 dB halves it" })}
+          <span class="last-sent" title="Bytes of the last output report sent (click to copy)"><span class="muted">Last report</span> <code data-sent data-copy>–</code></span>
         </section>
 
         <section class="tile">
           <h3>Rumble <button class="mini" data-stop>Stop</button></h3>
-          <p class="hint">Plays while a motor is above 0. Leaving the tab stops it.</p>
-          ${slider({ key: "rumbleL", label: "Left", min: 0, max: 100, value: 0, unit: "%" })}
-          ${slider({ key: "rumbleR", label: "Right", min: 0, max: 100, value: 0, unit: "%" })}
+          <p class="hint">A steady buzz, like a gamepad's two motors. Plays while a slider is above 0; leaving the tab stops it.</p>
+          ${slider({ key: "rumbleL", label: "Left", min: 0, max: 100, value: 0, unit: "%", tip: "Speed of the left motor" })}
+          ${slider({ key: "rumbleR", label: "Right", min: 0, max: 100, value: 0, unit: "%", tip: "Speed of the right motor" })}
         </section>
 
         <section class="tile">
-          <h3>Effects</h3>
-          <p class="hint">Built-in effects of the firmware, at the gain above.</p>
-          <div class="effect-grid">
-            ${EFFECTS.map(([l, v]) => `<button class="gbtn" data-effect="${v}">${l}</button>`).join("")}
+          <h3>Taps</h3>
+          <p class="hint">Short feedback built into the controller. Scripts are longer patterns stored in it.</p>
+          <div class="tap-row">
+            ${TAPS.map(([l, v, tip]) => `<button class="gbtn" data-effect="${v}" title="${tip}">${l}</button>`).join("")}
           </div>
           <div class="script-row">
-            ${slider({ key: "script", label: "Script", min: 0, max: 31, value: 1, unit: "" })}
+            ${slider({ key: "script", label: "Script", min: 0, max: LAST_SCRIPT, value: 1, unit: "", tip: `Which stored pattern to play (0–${LAST_SCRIPT})` })}
             <button class="gbtn" data-play="script">Play</button>
-          </div>
-        </section>
-
-        <section class="tile wide">
-          <h3>Tone <button class="mini" data-play="tone">Play</button></h3>
-          <div class="cols">
-            ${slider({ key: "freq", label: "Frequency", min: 20, max: 1000, value: 200, unit: "Hz" })}
-            ${slider({ key: "toneMs", label: "Duration", min: 20, max: 2000, step: 10, value: 300, unit: "ms" })}
-            ${slider({ key: "lfo", label: "LFO", min: 0, max: 50, value: 0, unit: "Hz" })}
-            ${slider({ key: "depth", label: "LFO depth", min: 0, max: 255, value: 0, unit: "" })}
-          </div>
-          <div class="piano" title="Each key plays a tone at the duration and LFO above">
-            ${PIANO.map((k) => `<button class="${k.black ? "black" : "white"}" data-hz="${k.hz}" title="${k.name} · ${k.hz} Hz">${k.black ? "" : `<span>${k.name}</span>`}</button>`).join("")}
           </div>
         </section>
 
         <section class="tile">
           <h3>Pulse train <button class="mini" data-play="pulse">Play</button></h3>
-          ${slider({ key: "onUs", label: "On", min: 100, max: 20000, step: 100, value: 2000, unit: "µs" })}
-          ${slider({ key: "offUs", label: "Off", min: 0, max: 50000, step: 100, value: 8000, unit: "µs" })}
-          ${slider({ key: "repeat", label: "Repeats", min: 0, max: 200, value: 30, unit: "" })}
+          <p class="hint">Full-power bursts: on, off, repeated. Strength doesn't apply.</p>
+          ${slider({ key: "onUs", label: "On", min: 100, max: 20000, step: 100, value: 2000, unit: "µs", tip: "How long each burst lasts (1000 µs = 1 ms)" })}
+          ${slider({ key: "offUs", label: "Off", min: 0, max: 50000, step: 100, value: 8000, unit: "µs", tip: "Gap between bursts" })}
+          ${slider({ key: "repeat", label: "Repeats", min: 0, max: 200, value: 30, unit: "", tip: "Extra bursts after the first" })}
+        </section>
+
+        <section class="tile tone">
+          <h3>Tone <button class="mini" data-play="tone">Play</button></h3>
+          <p class="hint">A vibration at one pitch. Click a key to play that note; LFO makes the strength wobble.</p>
+          <div class="cols">
+            ${slider({ key: "freq", label: "Pitch", min: 20, max: 1000, value: 200, unit: "Hz", tip: "Frequency for the Play button; the keys set their own" })}
+            ${slider({ key: "toneMs", label: "Length", min: 20, max: 2000, step: 10, value: 300, unit: "ms", tip: "How long each tone and key plays" })}
+            ${slider({ key: "lfo", label: "LFO rate", min: 0, max: 50, value: 0, unit: "Hz", tip: "How many times per second the strength wobbles (0 = steady)" })}
+            ${slider({ key: "depth", label: "LFO depth", min: 0, max: 255, value: 0, unit: "", tip: "How deep the wobble is (0 = none, 255 = full)" })}
+          </div>
+          <div class="piano">
+            ${PIANO.map((k) => `<button class="${k.black ? "black" : "white"}" data-hz="${k.hz}" title="${k.name} · ${k.hz} Hz">${k.black ? "" : `<span>${k.name}</span>`}</button>`).join("")}
+          </div>
         </section>
 
         <section class="tile">
           <h3>Sweep <button class="mini" data-play="sweep">Play</button></h3>
-          ${slider({ key: "from", label: "From", min: 20, max: 1000, value: 40, unit: "Hz" })}
-          ${slider({ key: "to", label: "To", min: 20, max: 1000, value: 400, unit: "Hz" })}
-          ${slider({ key: "sweepMs", label: "Duration", min: 50, max: 3000, step: 10, value: 800, unit: "ms" })}
+          <p class="hint">Glides from one pitch to another, like a rising or falling siren.</p>
+          ${slider({ key: "from", label: "From", min: 20, max: 1000, value: 40, unit: "Hz", tip: "Starting pitch" })}
+          ${slider({ key: "to", label: "To", min: 20, max: 1000, value: 400, unit: "Hz", tip: "Ending pitch" })}
+          ${slider({ key: "sweepMs", label: "Length", min: 50, max: 3000, step: 10, value: 800, unit: "ms", tip: "How long the glide takes" })}
         </section>
       </div>`;
 

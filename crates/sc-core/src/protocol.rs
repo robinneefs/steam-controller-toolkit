@@ -64,8 +64,8 @@ const OUT_HAPTIC_LOG_SWEEP: u8 = 0x84;
 const OUT_HAPTIC_SCRIPT: u8 = 0x85;
 
 /// A haptic effect, sent as an output report (`ID_OUT_REPORT_HAPTIC_*` in SDL's
-/// `controller_structs.h`). `side` picks the actuators as a bitmask: 1 left, 2 right, 3 both
-/// (0 also plays on the left; verified by hand). `gain_db` is relative to full strength.
+/// `controller_structs.h`). `side` picks the trackpad actuator: 0 left, 1 right, 2 both (verified
+/// by hand; 3 plays nothing). `gain_db` is relative to full strength.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Haptic {
@@ -75,12 +75,13 @@ pub enum Haptic {
     /// `repeat + 1` pulses of `on_us` with `off_us` gaps.
     Pulse { side: u8, on_us: u16, off_us: u16, repeat: u16 },
     /// A built-in effect: 0 off, 1 tick, 2 click, 3 tone, 4 rumble, 5 noise, 6 script, 7 sweep.
+    /// Only tick and click play; the others need parameters this report has no room for.
     Command { side: u8, command: u8, gain_db: i8 },
     /// A tone at `frequency` Hz, its amplitude modulated at `lfo_freq` Hz by `lfo_depth`.
     Tone { side: u8, gain_db: i8, frequency: u16, duration_ms: u16, lfo_freq: u16, lfo_depth: u8 },
     /// A logarithmic frequency sweep from `start_hz` to `end_hz`.
     Sweep { side: u8, gain_db: i8, duration_ms: u16, start_hz: u16, end_hz: u16 },
-    /// A haptic pattern stored in the firmware.
+    /// A haptic pattern stored in the firmware. Scripts 0..=17 play; 18 and up are empty.
     Script { side: u8, script_id: u8, gain_db: i8 },
 }
 

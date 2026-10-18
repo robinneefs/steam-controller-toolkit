@@ -43,7 +43,7 @@ everything it sends, live (~265 reports per second). It is organised in tabs, on
 Play every haptic effect the controller supports, on the left, right or both actuators:
 
 - **Rumble** with a slider for each motor.
-- **Built-in effects** (tick, click, tone, rumble, noise) and the firmware's stored scripts.
+- **Taps** (tick and click) and the 18 haptic scripts stored in the controller.
 - **Tone** with frequency, duration and LFO, plus a two-octave **piano** to play notes.
 - **Pulse trains** and **frequency sweeps**.
 - The bytes of the last report sent, for protocol work.

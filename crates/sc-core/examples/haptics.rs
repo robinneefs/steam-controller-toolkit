@@ -3,9 +3,11 @@
 //!
 //!   cargo run -p sc-core --example haptics -- [--side N] [--identify]
 //!
-//! --side N    only test this side value (default: 1, 2 and 3)
-//! --identify  hold the controller instead: side N buzzes N + 1 times, so you can tell which
-//!             hand each side value drives
+//! --side N    only test this side value (default: 0, 1 and 2)
+//! --identify  side N buzzes N + 1 times, so you can tell which actuator each side value drives
+//! --buzz N [tone|click|script|pulse|sweep]
+//!             three short effects on side N, then exit. To tell sides apart, rest the controller
+//!             on a table with a thumb on each trackpad: held by the grips, the whole shell buzzes
 
 use std::sync::mpsc;
 use std::thread;
@@ -19,7 +21,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let sides: Vec<u8> = match args.iter().position(|a| a == "--side").and_then(|i| args.get(i + 1)) {
         Some(s) => vec![s.parse().expect("--side takes a number")],
-        None => vec![1, 2, 3],
+        None => vec![0, 1, 2],
     };
 
     let (tx, rx) = mpsc::channel();
@@ -33,6 +35,26 @@ fn main() {
             Err(_) => return,
         }
     };
+    // --buzz SIDE [KIND]: three short effects of one kind on one side value, then exit.
+    if let Some(side) = args.iter().position(|a| a == "--buzz").and_then(|i| args.get(i + 1)) {
+        let side: u8 = side.parse().expect("--buzz takes a side value");
+        let kind = args.iter().position(|a| a == "--buzz").and_then(|i| args.get(i + 2)).map_or("tone", |s| s.as_str());
+        let h = match kind {
+            "click" => Haptic::Command { side, command: 2, gain_db: 0 },
+            "script" => Haptic::Script { side, script_id: 1, gain_db: 0 },
+            "pulse" => Haptic::Pulse { side, on_us: 2000, off_us: 2000, repeat: 50 },
+            "sweep" => Haptic::Sweep { side, gain_db: 0, duration_ms: 300, start_hz: 50, end_hz: 400 },
+            _ => Haptic::Tone { side, gain_db: 0, frequency: 180, duration_ms: 250, lfo_freq: 0, lfo_depth: 0 },
+        };
+        thread::sleep(Duration::from_millis(500));
+        for _ in 0..3 {
+            let (reply, r) = mpsc::channel();
+            hub.send(&slot, Command::Haptic { haptic: h, reply }).unwrap();
+            println!("{kind} side {side}: {:?}", r.recv_timeout(Duration::from_secs(2)));
+            thread::sleep(Duration::from_millis(700));
+        }
+        return;
+    }
     if args.iter().any(|a| a == "--identify") {
         println!("Using {slot}. Hold the controller; side N buzzes N + 1 times, starting in 8 s.");
         thread::sleep(Duration::from_secs(8));
