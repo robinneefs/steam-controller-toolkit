@@ -139,7 +139,7 @@ fields are **little-endian**, and structures are packed (no padding).
 | `0x47` | State, with timestamps | 46 bytes | Adds a trackpad timestamp; 16-bit IMU timestamp |
 | `0x43` | Battery | | see [Other reports](#other-reports) |
 | `0x79`, `0x46` | Wireless status | | controller connected/disconnected on this slot |
-| `0x7b` | *Unknown* | 54 bytes | About 2 per second; not decoded yet (the Visualizer shows its bytes) |
+| `0x7b` | *Unknown* | 54 bytes | About 2 per second; not decoded yet (the Raw data tab shows its bytes) |
 
 ### State report `0x42` / `0x45`
 

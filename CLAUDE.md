@@ -8,7 +8,9 @@ navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
 generated from it with `npx tauri icon assets/logo.png` (delete the android/ios folders after);
 `public/logo.png` is the in-app/favicon copy. Code is MIT (`LICENSE`); the protocol is
-documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`.
+documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`. The README
+links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
+`docs/screenshots/` (taken at the default 1100 x 720 window); retake them when a tab's look changes.
 
 ## Stack
 
@@ -80,7 +82,8 @@ moves it from live input. The D-pad is then cut along its diagonals into `part_d
 by headless Blender (`tools/split-dpad.py`; found via `$BLENDER`, the default install paths or
 PATH), so each arm lights up on its own; the arms share one pivot and tilt together as a rocker. Keep it light: one model, 1024px WebP textures, on-demand rendering
 (draws only when orientation/inputs change), pixel ratio capped at 1.5, nothing drawn while the
-window is hidden. Append `#demo` to the page URL to cycle every input without a controller.
+window is hidden. Append `#demo` to the page URL to cycle every input in the 3D view (it replaces a connected
+controller's inputs; the view only updates while a controller sends state reports).
 
 ## HID enumeration must stay filtered
 
