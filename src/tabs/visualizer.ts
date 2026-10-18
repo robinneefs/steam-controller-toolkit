@@ -93,6 +93,7 @@ export class VisualizerTab implements Tab {
                   <span class="cap" data-btn="QAM" title="Quick access menu">···</span>
                   <span class="cap" data-btn="View" title="View"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="12" height="10" rx="2"/><rect x="9" y="9" width="12" height="10" rx="2"/></svg></span>
                 </div>
+                <div class="sys stick-clicks"><span class="cap" data-btn="L3" title="Left stick click">L3</span><span class="cap" data-btn="R3" title="Right stick click">R3</span></div>
                 <div class="touch">${TOUCH_SENSORS.map(([b, label]) => `<span data-touch="${b}">${label}</span>`).join("")}</div>
               </div>
               <div class="side-c">

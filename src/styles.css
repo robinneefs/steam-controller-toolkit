@@ -353,6 +353,7 @@ a:hover { text-decoration: underline; }
 .sys { display: flex; align-items: center; gap: 8px; }
 .sys .cap { width: 34px; min-width: 0; height: 24px; padding: 0; border-radius: 12px; }
 .sys .cap.steam { width: 34px; height: 34px; border-radius: 50%; }
+.stick-clicks { gap: 50px; }
 .touch { display: grid; grid-template-columns: auto auto; gap: 4px 14px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .touch span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .touch span::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ffffff22; }
