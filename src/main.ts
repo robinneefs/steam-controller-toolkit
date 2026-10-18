@@ -1,14 +1,18 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./controller";
+import { controlPlayback, formatTime, importRecordings, playRecording, startRecording, stopRecording } from "./tape";
 import { AboutTab } from "./tabs/about";
 import { HapticsTab } from "./tabs/haptics";
 import { RawTab } from "./tabs/raw";
+import { RecorderTab } from "./tabs/recorder";
 import type { Tab } from "./tabs/tab";
 import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new RawTab(), new AboutTab()];
+const recorder = new RecorderTab();
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new RawTab(), recorder, new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const content = document.querySelector<HTMLElement>("#tab-content")!;
@@ -45,15 +49,48 @@ show(active);
 let lastStatus = "";
 function renderStatus(snap: Snapshot): void {
   const b = snap.battery;
-  const html = snap.state
-    ? `<span>${snap.slot ? describeSlot(snap.slot).label : ""}</span><span class="num">${snap.report_rate} Hz</span>` +
+  const p = snap.tape.playback;
+  // While a recording plays, the snapshot is the recording's, so the pill replaces the device.
+  const replay = p
+    ? `<span class="tape-pill replay" title="Replaying ${p.name.replace(/"/g, "&quot;")}"><b>Replay</b><span class="num">${formatTime(p.position)} / ${formatTime(p.duration)}</span>` +
+      `<button data-tape="${p.paused ? "resume" : "pause"}" title="${p.paused ? "Resume" : "Pause"}">${p.paused ? "▶" : "❚❚"}</button>` +
+      `<button data-tape="stop" title="Stop and return to live input">■</button></span>`
+    : "";
+  const device = snap.state
+    ? (p ? "" : `<span>${snap.slot ? describeSlot(snap.slot).label : ""}</span>`) +
+      `<span class="num">${snap.report_rate} Hz</span>` +
       (b
         ? `<span class="battery" title="${CHARGE_STATES[b.charge_state] ?? ""}"><span class="cell${b.level <= 20 ? " low" : ""}"><i style="width:${b.level}%"></i></span><span class="num">${b.level}%</span></span>`
         : "")
-    : `<span class="searching">Searching for controller…</span>`;
+    : p ? "" : `<span class="searching">Searching for controller…</span>`;
+  const html = replay + device;
   if (html === lastStatus) return;
   lastStatus = html;
   status.innerHTML = html;
+}
+status.addEventListener("click", (e) => {
+  const b = (e.target as Element).closest<HTMLElement>("[data-tape]");
+  if (b) controlPlayback({ kind: b.dataset.tape as "pause" | "resume" | "stop" }).catch((err) => showToast(String(err)));
+});
+
+// Record from any tab: the button starts and stops a recording of live input.
+const record = document.querySelector<HTMLButtonElement>("#record")!;
+const recordTime = record.querySelector<HTMLElement>("span")!;
+record.addEventListener("click", async () => {
+  try {
+    if (lastSnapshot?.tape.recording) await stopRecording();
+    else showToast(`Recording to ${await startRecording()}`);
+  } catch (e) {
+    showToast(String(e));
+  }
+});
+function renderRecord(snap: Snapshot): void {
+  const r = snap.tape.recording;
+  record.hidden = !r && (!snap.state || !!snap.tape.playback);
+  record.classList.toggle("on", !!r);
+  record.title = r ? `Recording to ${r.name}. Click to stop` : "Record live input (see the Recorder tab)";
+  const time = r ? formatTime(r.seconds) : "";
+  if (recordTime.textContent !== time) recordTime.textContent = time;
 }
 
 // Warn while Steam is running; a dismissal lasts until Steam is closed and reopened.
@@ -118,6 +155,24 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+// Drop recordings on the window to add them to the Recorder; a single one starts playing.
+getCurrentWebview()
+  .onDragDropEvent(async (e) => {
+    if (e.payload.type !== "drop") return;
+    const paths = e.payload.paths.filter((p) => p.toLowerCase().endsWith(".screc"));
+    if (!paths.length) return showToast("Only .screc recordings can be dropped here");
+    try {
+      const names = await importRecordings(paths);
+      show(recorder);
+      await recorder.refresh();
+      if (names.length === 1) await playRecording(names[0]);
+      showToast(names.length === 1 ? `Playing ${names[0]}` : `Added ${names.length} recordings`);
+    } catch (err) {
+      showToast(String(err));
+    }
+  })
+  .catch(() => {});
+
 getVersion()
   .then((v) => (document.querySelector("#footer-info")!.textContent = `v${v}`))
   .catch(() => {});
@@ -127,7 +182,9 @@ onSnapshot((snap) => {
   // Nothing is visible while the window is minimised or hidden; skip all drawing.
   if (document.hidden) return;
   renderStatus(snap);
-  power.hidden = !snap.state;
+  // During playback the state is the recording's; there is no live controller to turn off.
+  power.hidden = !snap.state || !!snap.tape.playback;
+  renderRecord(snap);
   renderSteamWarning(snap);
   active.update?.(snap);
 });

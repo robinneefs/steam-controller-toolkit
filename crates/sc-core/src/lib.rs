@@ -3,6 +3,7 @@
 pub mod device;
 pub mod hub;
 pub mod protocol;
+pub mod recording;
 
 pub use device::Controller;
 pub use hidapi::HidApi;

@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::path::PathBuf;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,6 +11,10 @@ use sc_core::{Command, ControllerState, Hub, HubEvent};
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
+
+mod tape;
+use tape::{PlaybackAction, RecordingInfo, Tape, TapeStatus};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
 const EMIT_INTERVAL: Duration = Duration::from_millis(16);
@@ -30,6 +35,8 @@ struct Snapshot {
     /// Steam is running. Its Desktop Layout turns controller input into mouse/keyboard input,
     /// which we cannot switch off from here (our lizard-mode-off only stops the firmware's own).
     steam_running: bool,
+    /// Recorder and player state. While a recording plays, the rest of the snapshot is replayed.
+    tape: TapeStatus,
 }
 
 const STEAM_PROCESS: &str = if cfg!(windows) {
@@ -78,54 +85,146 @@ async fn play_haptic(slot: String, haptic: Haptic, hub: State<'_, Hub>) -> Resul
     Ok(protocol::haptic_report(&haptic))
 }
 
-fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
+type SharedTape = Arc<Mutex<Tape>>;
+
+/// Start recording every live report to a new file named `name`; returns the name used
+/// (numbered if `name` was taken).
+#[tauri::command]
+fn start_recording(name: String, tape: State<'_, SharedTape>) -> Result<String, String> {
+    tape.lock().unwrap().start_recording(&name)
+}
+
+#[tauri::command]
+fn stop_recording(tape: State<'_, SharedTape>) -> Result<(), String> {
+    tape.lock().unwrap().stop_recording()
+}
+
+/// Recordings in the recordings folder, newest first.
+#[tauri::command]
+fn list_recordings(tape: State<'_, SharedTape>) -> Vec<RecordingInfo> {
+    tape.lock().unwrap().list()
+}
+
+/// Replay a recording in place of live input.
+#[tauri::command]
+fn play_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
+    tape.lock().unwrap().play(&name)
+}
+
+#[tauri::command]
+fn control_playback(action: PlaybackAction, tape: State<'_, SharedTape>) -> Result<(), String> {
+    tape.lock().unwrap().control(action)
+}
+
+#[tauri::command]
+fn delete_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
+    tape.lock().unwrap().delete(&name)
+}
+
+/// Show a recording in the file manager, or open the recordings folder if `name` is None.
+#[tauri::command]
+fn reveal_recording(name: Option<String>, app: AppHandle, tape: State<'_, SharedTape>) -> Result<(), String> {
+    let tape = tape.lock().unwrap();
+    match name {
+        Some(name) => app.opener().reveal_item_in_dir(tape.file(&name)?),
+        None => {
+            std::fs::create_dir_all(tape.dir()).map_err(|e| e.to_string())?;
+            app.opener().open_path(tape.dir().to_string_lossy(), None::<&str>)
+        }
+    }
+    .map_err(|e| e.to_string())
+}
+
+/// Copy recordings dropped on the window into the recordings folder; returns their names.
+#[tauri::command]
+fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> Result<Vec<String>, String> {
+    let mut tape = tape.lock().unwrap();
+    paths.iter().map(|p| tape.import(p)).collect()
+}
+
+/// A [`Snapshot`] built up from reports, one for live input and one for a replayed recording.
+#[derive(Default)]
+struct Fold {
+    snap: Snapshot,
+    /// State reports since the report rate was last updated.
+    rate_count: u32,
+}
+
+impl Fold {
+    fn packet(&mut self, slot: &str, data: &[u8]) {
+        let snap = &mut self.snap;
+        match protocol::parse(data) {
+            Some(Report::State(s)) => {
+                snap.slot = Some(slot.to_string());
+                snap.state = Some(s);
+                snap.raw = data.to_vec();
+                self.rate_count += 1;
+            }
+            Some(Report::Battery(b)) => snap.battery = Some(b),
+            Some(Report::Wireless(false)) => self.closed(slot),
+            Some(Report::Other(id)) => match snap.unknown_reports.iter_mut().find(|u| u.id == id) {
+                Some(u) => {
+                    u.count += 1;
+                    u.data = data.to_vec();
+                }
+                None => snap.unknown_reports.push(UnknownReport { id, count: 1, data: data.to_vec() }),
+            },
+            _ => {}
+        }
+    }
+
+    fn closed(&mut self, slot: &str) {
+        if self.snap.slot.as_deref() == Some(slot) {
+            self.snap.slot = None;
+            self.snap.state = None;
+        }
+    }
+
+    fn update_rate(&mut self) {
+        self.snap.report_rate = std::mem::take(&mut self.rate_count);
+    }
+}
+
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
 
-    let mut snap = Snapshot::default();
+    let mut live = Fold::default();
+    let mut replay = Fold::default();
     let mut last_emit = Instant::now();
     let mut rate_window = Instant::now();
-    let mut rate_count = 0u32;
     loop {
-        match rx.recv_timeout(EMIT_INTERVAL) {
-            Ok(HubEvent::Packet { slot, data }) => match protocol::parse(&data) {
-                Some(Report::State(s)) => {
-                    snap.slot = Some(slot);
-                    snap.state = Some(s);
-                    snap.raw = data;
-                    rate_count += 1;
-                }
-                Some(Report::Battery(b)) => snap.battery = Some(b),
-                Some(Report::Wireless(false)) if snap.slot.as_deref() == Some(slot.as_str()) => {
-                    snap.slot = None;
-                    snap.state = None;
-                }
-                Some(Report::Other(id)) => match snap.unknown_reports.iter_mut().find(|u| u.id == id) {
-                    Some(u) => {
-                        u.count += 1;
-                        u.data = data;
-                    }
-                    None => snap.unknown_reports.push(UnknownReport { id, count: 1, data }),
-                },
-                _ => {}
-            },
-            Ok(HubEvent::Closed { slot, .. }) if snap.slot.as_deref() == Some(slot.as_str()) => {
-                snap.slot = None;
-                snap.state = None;
+        // Wake up in time for the next replayed report.
+        let wait = tape.lock().unwrap().next_due().map_or(EMIT_INTERVAL, |d| d.min(EMIT_INTERVAL));
+        match rx.recv_timeout(wait) {
+            Ok(HubEvent::Packet { slot, data }) => {
+                live.packet(&slot, &data);
+                tape.lock().unwrap().record(&slot, &data);
             }
+            Ok(HubEvent::Closed { slot, .. }) => live.closed(&slot),
             Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
         }
+        let mut deck = tape.lock().unwrap();
+        if deck.take_reset() {
+            replay = Fold::default();
+        }
+        deck.replay(|slot, data| replay.packet(slot, data));
+        let playing = deck.playing();
+        let status = (last_emit.elapsed() >= EMIT_INTERVAL).then(|| deck.status());
+        drop(deck);
         if rate_window.elapsed() >= Duration::from_secs(1) {
-            snap.report_rate = rate_count;
-            rate_count = 0;
+            live.update_rate();
+            replay.update_rate();
             rate_window = Instant::now();
         }
-        if last_emit.elapsed() >= EMIT_INTERVAL {
+        if let Some(status) = status {
             last_emit = Instant::now();
+            let snap = if playing { &mut replay.snap } else { &mut live.snap };
             snap.steam_running = steam_running.load(Ordering::Relaxed);
-            let _ = app.emit("controller", &snap);
+            snap.tape = status;
+            let _ = app.emit("controller", &*snap);
         }
     }
 }
@@ -134,12 +233,25 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![turn_off_controller, play_haptic])
+        .invoke_handler(tauri::generate_handler![
+            turn_off_controller,
+            play_haptic,
+            start_recording,
+            stop_recording,
+            list_recordings,
+            play_recording,
+            control_playback,
+            delete_recording,
+            reveal_recording,
+            import_recordings,
+        ])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
             app.manage(hub::spawn(tx, HubOptions::default()));
+            let tape: SharedTape = Arc::new(Mutex::new(Tape::new(app.path().app_data_dir()?.join("recordings"))));
+            app.manage(tape.clone());
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle, rx));
+            thread::spawn(move || forward_events(handle, rx, tape));
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -63,6 +63,21 @@ For protocol work and debugging:
   the tilt computed from gravity alone.
 - **Undecoded reports** the app has seen, with their latest bytes.
 
+### Recorder
+
+![Recorder tab: record button, playback controls and the list of recordings](docs/screenshots/recorder.png)
+
+Record a session and play it back without a controller:
+
+- **Record** every report the controller sends (up to 10 minutes), from this tab or the
+  record button in the top bar, which shows the elapsed time while recording.
+- **Play back** a recording: every tab then shows it in place of the controller, and the top
+  bar shows a *Replay* pill with pause and stop. Seek, loop, or pause and **step** one state
+  report at a time to inspect it in Raw data.
+- Recordings are plain text files (`.screc`, one report per line in hex) in the app's data
+  folder; *Open folder* and *Show* find them. **Drop a `.screc` file on the window** to add
+  it and play it, e.g. one attached to a bug report.
+
 ### Everywhere
 
 - The top bar shows the connection (e.g. *Puck · slot 1*), report rate and battery.
@@ -73,7 +88,7 @@ For protocol work and debugging:
 
 ![About tab: version, links, credits and licenses](docs/screenshots/about.png)
 
-More tools (haptics, stick tester, gyro mouse) are planned. See
+More tools (stick tester, gyro mouse) are planned. See
 [docs/PROTOCOL.md](docs/PROTOCOL.md) for how the communication with the controller works.
 
 ## Requirements
@@ -139,8 +154,8 @@ npm run probe -- --raw --seconds 10
 | Path | What it is |
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
-| `src-tauri` | Tauri backend: runs the device layer and streams snapshots to the UI |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, Raw data and About tabs |
+| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, Raw data, Recorder and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |

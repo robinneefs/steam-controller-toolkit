@@ -147,7 +147,8 @@ export class HapticsTab implements Tab {
   }
 
   update(snap: Snapshot): void {
-    const connected = snap.state !== null;
+    // A replayed recording has no controller to play haptics on.
+    const connected = snap.state !== null && !snap.tape.playback;
     if (snap.slot !== this.slot || !connected) this.rumbling = false;
     this.slot = connected ? snap.slot : null;
     this.root.querySelector(".haptics")!.classList.toggle("disconnected", !connected);
