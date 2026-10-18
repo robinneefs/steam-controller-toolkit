@@ -80,10 +80,10 @@ a:hover { text-decoration: underline; }
 /* ---------- Top bar ---------- */
 
 .topbar { display: flex; align-items: center; gap: 18px; padding: 14px 24px 10px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 13px; line-height: 1.15; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
 .brand img { width: 36px; height: 36px; }
 /* Near the minimum window size the logo alone has to do, or the top bar would not fit. */
-@media (max-width: 1099px) { .brand span { display: none; } }
+@media (max-width: 1099px) { .brand span { display: none; } .topbar { gap: 12px; } .status { gap: 10px; } }
 .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #00000040; border: 1px solid var(--line); }
 .tabs button {
   white-space: nowrap;
@@ -97,8 +97,14 @@ a:hover { text-decoration: underline; }
 }
 .tabs button:hover { color: var(--text); }
 .tabs button.active { background: var(--text); color: var(--bg); }
+/* Replay pill: anchored after the tabs so the status and buttons on the right can change without moving it. */
+.replay { flex: none; display: flex; white-space: nowrap; }
+.replay:empty { display: none; }
 .status { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--muted); font-weight: 500; white-space: nowrap; }
 .status .searching { color: var(--muted); }
+/* Fixed widths, so "0 Hz" or "9%" does not nudge what follows. */
+.status .rate { min-width: 6ch; text-align: right; }
+.battery .level { min-width: 4ch; }
 .battery { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .battery .cell { position: relative; width: 26px; height: 13px; padding: 1px; border: 2px solid #eef3f8aa; border-radius: 4px; }
 .battery .cell::after { content: ""; position: absolute; right: -5px; top: 2px; width: 2px; height: 5px; border-radius: 0 2px 2px 0; background: #eef3f8aa; }

@@ -17,6 +17,7 @@ const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new RawTab(), record
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const content = document.querySelector<HTMLElement>("#tab-content")!;
 const status = document.querySelector<HTMLElement>("#status")!;
+const replayEl = document.querySelector<HTMLElement>("#replay")!;
 
 const panes = new Map<string, HTMLElement>();
 let active: Tab = tabs[0];
@@ -47,10 +48,12 @@ for (const tab of tabs) {
 show(active);
 
 let lastStatus = "";
+let lastReplay = "";
 function renderStatus(snap: Snapshot): void {
   const b = snap.battery;
   const p = snap.tape.playback;
   // While a recording plays, the snapshot is the recording's, so the pill replaces the device.
+  // It sits in its own slot after the tabs, anchored left, so the changing device side cannot move it.
   const replay = p
     ? `<span class="tape-pill replay" title="Replaying ${p.name.replace(/"/g, "&quot;")}"><b>Replay</b><span class="num">${formatTime(p.position)} / ${formatTime(p.duration)}</span>` +
       `<button data-tape="${p.paused ? "resume" : "pause"}" title="${p.paused ? "Resume" : "Pause"}">${p.paused ? "▶" : "❚❚"}</button>` +
@@ -58,17 +61,15 @@ function renderStatus(snap: Snapshot): void {
     : "";
   const device = snap.state
     ? (p ? "" : `<span>${snap.slot ? describeSlot(snap.slot).label : ""}</span>`) +
-      `<span class="num">${snap.report_rate} Hz</span>` +
+      `<span class="num rate">${snap.report_rate} Hz</span>` +
       (b
-        ? `<span class="battery" title="${CHARGE_STATES[b.charge_state] ?? ""}"><span class="cell${b.level <= 20 ? " low" : ""}"><i style="width:${b.level}%"></i></span><span class="num">${b.level}%</span></span>`
+        ? `<span class="battery" title="${CHARGE_STATES[b.charge_state] ?? ""}"><span class="cell${b.level <= 20 ? " low" : ""}"><i style="width:${b.level}%"></i></span><span class="num level">${b.level}%</span></span>`
         : "")
     : p ? "" : `<span class="searching">Searching for controller…</span>`;
-  const html = replay + device;
-  if (html === lastStatus) return;
-  lastStatus = html;
-  status.innerHTML = html;
+  if (replay !== lastReplay) replayEl.innerHTML = lastReplay = replay;
+  if (device !== lastStatus) status.innerHTML = lastStatus = device;
 }
-status.addEventListener("click", (e) => {
+replayEl.addEventListener("click", (e) => {
   const b = (e.target as Element).closest<HTMLElement>("[data-tape]");
   if (b) controlPlayback({ kind: b.dataset.tape as "pause" | "resume" | "stop" }).catch((err) => showToast(String(err)));
 });
