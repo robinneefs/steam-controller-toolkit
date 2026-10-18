@@ -22,8 +22,7 @@
 ## Features
 
 The app talks to the controller directly over HID (no Steam or driver needed) and shows
-everything it sends, live (~265
-reports per second). It is organised in tabs, one per tool.
+everything it sends, live (~265 reports per second). It is organised in tabs, one per tool.
 
 ### Visualizer
 
