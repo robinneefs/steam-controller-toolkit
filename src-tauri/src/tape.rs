@@ -315,6 +315,32 @@ impl Tape {
         }
     }
 
+    /// State reports per second in the second of recording around the play position. Taken from
+    /// the recording rather than counted as packets are replayed, so it holds steady when playback
+    /// starts, pauses or jumps.
+    pub fn replay_rate(&self) -> u32 {
+        const WINDOW: Duration = Duration::from_secs(1);
+        let Some(p) = &self.player else { return 0 };
+        let end = p.position().max(WINDOW).min(p.duration());
+        let start = end.saturating_sub(WINDOW);
+        let span = (end - start).as_secs_f64();
+        if span <= 0.0 {
+            return 0;
+        }
+        let first = p.packets.partition_point(|pk| pk.at < start);
+        let last = p.packets.partition_point(|pk| pk.at <= end);
+        let count = p.packets[first..last].iter().filter(|pk| is_state(&pk.data)).count();
+        (count as f64 / span).round() as u32
+    }
+
+    /// The recording's first battery report. Battery reports are rare, so the replayed state
+    /// starts with this one instead of showing no battery until the next comes along.
+    pub fn first_battery(&self) -> Option<(&str, &[u8])> {
+        let p = self.player.as_ref()?;
+        let pk = p.packets.iter().find(|pk| pk.data.first() == Some(&protocol::REPORT_BATTERY))?;
+        Some((&pk.slot, &pk.data))
+    }
+
     /// How long until the next replayed packet is due, if one is.
     pub fn next_due(&self) -> Option<Duration> {
         let p = self.player.as_ref().filter(|p| p.paused_at.is_none())?;

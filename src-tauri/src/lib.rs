@@ -214,14 +214,17 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         let mut deck = tape.lock().unwrap();
         if deck.take_reset() {
             replay = Fold::default();
+            if let Some((slot, data)) = deck.first_battery() {
+                replay.packet(slot, data);
+            }
         }
         deck.replay(|slot, data| replay.packet(slot, data));
+        replay.snap.report_rate = deck.replay_rate();
         let playing = deck.playing();
         let status = (last_emit.elapsed() >= EMIT_INTERVAL).then(|| deck.status());
         drop(deck);
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
-            replay.update_rate();
             rate_window = Instant::now();
         }
         if let Some(status) = status {
