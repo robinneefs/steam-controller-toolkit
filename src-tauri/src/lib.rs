@@ -108,7 +108,10 @@ async fn list_recordings(tape: State<'_, SharedTape>) -> Result<Vec<RecordingInf
 /// Replay a recording in place of live input.
 #[tauri::command]
 async fn play_recording(name: String, tape: State<'_, SharedTape>) -> Result<(), String> {
-    tape.lock().unwrap().play(&name)
+    // Read the file without holding the tape: the emit loop needs it for live input meanwhile.
+    let file = tape.lock().unwrap().file(&name)?;
+    let packets = sc_core::recording::read_file(&file)?;
+    tape.lock().unwrap().play(&name, packets)
 }
 
 #[tauri::command]
@@ -143,6 +146,7 @@ async fn reveal_recording(name: Option<String>, app: AppHandle, tape: State<'_, 
 /// Copy recordings dropped on the window into the recordings folder; returns their names.
 #[tauri::command]
 async fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> Result<Vec<String>, String> {
+    paths.iter().try_for_each(|p| tape::check_import(p))?;
     let mut tape = tape.lock().unwrap();
     paths.iter().map(|p| tape.import(p)).collect()
 }
@@ -197,7 +201,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
 
     let mut live = Fold::default();
     let mut replay = Fold::default();
-    let mut last_emit = Instant::now();
+    let mut next_emit = Instant::now();
     let mut rate_window = Instant::now();
     loop {
         // Wake up in time for the next replayed report.
@@ -221,14 +225,18 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         deck.replay(|slot, data| replay.packet(slot, data));
         replay.snap.report_rate = deck.replay_rate();
         let playing = deck.playing();
-        let status = (last_emit.elapsed() >= EMIT_INTERVAL).then(|| deck.status());
+        let now = Instant::now();
+        let status = (now >= next_emit).then(|| deck.status());
         drop(deck);
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
             rate_window = Instant::now();
         }
         if let Some(status) = status {
-            last_emit = Instant::now();
+            // Keep to the schedule instead of counting from now: an emit waits for the next report
+            // (~3.8 ms apart), so restarting the clock at each one slowed the UI to ~56 per second
+            // and left some 60 Hz frames without a fresh snapshot. After a stall, start over.
+            next_emit = (next_emit + EMIT_INTERVAL).max(now);
             let snap = if playing { &mut replay.snap } else { &mut live.snap };
             snap.steam_running = steam_running.load(Ordering::Relaxed);
             snap.tape = status;

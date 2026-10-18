@@ -293,3 +293,173 @@ fn parse_state(d: &[u8]) -> Option<ControllerState> {
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The captured `0x42` report from `docs/PROTOCOL.md`, controller lying still.
+    const CAPTURED: [u8; 54] = [
+        0x42, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xba, 0x01, 0x8d, 0x00, 0x51, 0xfe,
+        0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4f, 0xc0,
+        0x0c, 0x00, 0x00, 0x00, 0xa2, 0x31, 0x6e, 0x25, 0xe0, 0xff, 0xfd, 0xff, 0x04, 0x00, 0x12, 0x6f,
+        0x07, 0x32, 0xf1, 0xef, 0x29, 0xdc,
+    ];
+
+    fn state(data: &[u8]) -> ControllerState {
+        match parse(data) {
+            Some(Report::State(s)) => s,
+            other => panic!("expected a state report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_the_captured_report() {
+        let s = state(&CAPTURED);
+        assert_eq!((s.report_id, s.seq, s.buttons), (0x42, 0xbb, 0));
+        assert_eq!((s.trigger_left, s.trigger_right), (0, 0));
+        assert_eq!(s.left_stick, [442, 141]);
+        assert_eq!(s.right_stick, [-431, 88]);
+        assert!(!s.left_pad.touched && !s.right_pad.touched);
+        assert_eq!(s.imu.timestamp, 0x000c_c04f);
+        assert_eq!(s.imu.accel, [0, 12706, 9582]);
+        assert_eq!(s.imu.gyro, [-32, -3, 4]);
+        assert_eq!(s.imu.quat.map(|q| q[0]), Some(0x6f12));
+    }
+
+    /// The docs say the quaternion rotates sensor vectors into a world frame with +Z up.
+    #[test]
+    fn quaternion_rotates_gravity_to_up() {
+        let s = state(&CAPTURED);
+        let [w, x, y, z] = s.imu.quat.unwrap().map(|v| v as f64 / 32767.0);
+        let a = s.imu.accel.map(|v| v as f64 / 16384.0);
+        // v' = v + 2w(q × v) + 2q × (q × v)
+        let cross = |p: [f64; 3], q: [f64; 3]| [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+        let t = cross([x, y, z], a).map(|c| 2.0 * c);
+        let u = cross([x, y, z], t);
+        let up: Vec<f64> = (0..3).map(|i| a[i] + w * t[i] + u[i]).collect();
+        assert!(up[0].abs() < 0.1 && up[1].abs() < 0.1 && up[2] > 0.9, "rotated gravity {up:?}");
+    }
+
+    #[test]
+    fn parses_buttons_and_pads() {
+        let mut d = CAPTURED;
+        let buttons = buttons::A | buttons::LEFT_PAD_TOUCH | buttons::RIGHT_PAD_CLICK | buttons::LEFT_GRIP_TOUCH;
+        d[2..6].copy_from_slice(&buttons.to_le_bytes());
+        d[8..10].copy_from_slice(&32767i16.to_le_bytes());
+        d[18..20].copy_from_slice(&(-1000i16).to_le_bytes());
+        d[20..22].copy_from_slice(&2000i16.to_le_bytes());
+        d[22..24].copy_from_slice(&500u16.to_le_bytes());
+        d[28..30].copy_from_slice(&65535u16.to_le_bytes());
+        let s = state(&d);
+        assert!(s.pressed(buttons::A) && !s.pressed(buttons::B));
+        assert_eq!(s.trigger_right, 32767);
+        assert!(s.left_pad.touched && !s.left_pad.clicked);
+        assert!(!s.right_pad.touched && s.right_pad.clicked);
+        assert_eq!((s.left_pad.x, s.left_pad.y, s.left_pad.pressure), (-1000, 2000, 500));
+        assert_eq!(s.right_pad.pressure, 65535);
+    }
+
+    #[test]
+    fn report_0x45_has_no_quaternion() {
+        let mut d = CAPTURED;
+        d[0] = REPORT_STATE_NO_QUAT;
+        let s = state(&d[..46]);
+        assert_eq!(s.imu.quat, None);
+        assert_eq!(s.imu.accel, [0, 12706, 9582]);
+        // Even with the bytes present, only 0x42 carries a quaternion.
+        assert_eq!(state(&d).imu.quat, None);
+    }
+
+    #[test]
+    fn report_0x47_shifts_the_pads() {
+        let mut d = [0u8; 46];
+        d[0] = REPORT_STATE_TIMESTAMP;
+        d[18..20].copy_from_slice(&0x1234u16.to_le_bytes()); // trackpad timestamp
+        d[20..22].copy_from_slice(&111i16.to_le_bytes()); // left pad x
+        d[30..32].copy_from_slice(&222u16.to_le_bytes()); // right pad pressure
+        d[32..34].copy_from_slice(&0xbeefu16.to_le_bytes()); // IMU timestamp
+        d[34..36].copy_from_slice(&16384i16.to_le_bytes()); // accel x
+        d[44..46].copy_from_slice(&(-7i16).to_le_bytes()); // gyro z
+        let s = state(&d);
+        assert_eq!(s.left_pad.x, 111);
+        assert_eq!(s.right_pad.pressure, 222);
+        assert_eq!(s.imu.timestamp, 0xbeef);
+        assert_eq!(s.imu.accel[0], 16384);
+        assert_eq!(s.imu.gyro[2], -7);
+        assert_eq!(s.imu.quat, None);
+    }
+
+    #[test]
+    fn parses_other_reports() {
+        assert!(matches!(parse(&[REPORT_BATTERY, 2, 87]), Some(Report::Battery(BatteryStatus { charge_state: 2, level: 87 }))));
+        assert!(matches!(parse(&[REPORT_WIRELESS_STATUS, 2]), Some(Report::Wireless(true))));
+        assert!(matches!(parse(&[REPORT_WIRELESS_STATUS_X, 1]), Some(Report::Wireless(false))));
+        assert!(matches!(parse(&[0x7b, 1, 2, 3]), Some(Report::Other(0x7b))));
+        assert!(parse(&[]).is_none());
+    }
+
+    #[test]
+    fn short_state_reports_are_rejected() {
+        assert!(parse(&CAPTURED[..45]).is_none());
+        assert!(state(&CAPTURED[..46]).imu.quat.is_none()); // quaternion cut off
+        assert!(state(&CAPTURED[..53]).imu.quat.is_none());
+        assert!(state(&CAPTURED[..54]).imu.quat.is_some());
+    }
+
+    /// Truncated or garbage reports of any id and length must never panic the reader.
+    #[test]
+    fn never_panics_on_any_id_or_length() {
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut buf = [0u8; 64];
+        for id in 0..=255u8 {
+            for len in 0..=buf.len() {
+                for b in buf.iter_mut() {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    *b = seed as u8;
+                }
+                buf[0] = id;
+                let _ = parse(&buf[..len]);
+            }
+        }
+    }
+
+    #[test]
+    fn feature_reports_match_the_docs() {
+        let s = settings_report();
+        assert_eq!(s.len(), 64);
+        assert_eq!(&s[..9], &[0x01, 0x87, 6, 9, 0, 0, 48, 0x18, 0]);
+        assert!(s[9..].iter().all(|&b| b == 0));
+        let t = turn_off_report();
+        assert_eq!(&t[..7], &[0x01, 0x9f, 4, b'o', b'f', b'f', b'!']);
+        assert!(t[7..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn haptic_reports_match_the_docs() {
+        let r = |h| haptic_report(&h);
+        assert_eq!(r(Haptic::Rumble { left: 0x1234, right: 0xabcd }), [0x80, 0, 0, 0, 0x34, 0x12, 0, 0xcd, 0xab, 0]);
+        assert_eq!(r(Haptic::Pulse { side: 2, on_us: 300, off_us: 700, repeat: 4 }), [0x81, 2, 0x2c, 0x01, 0xbc, 0x02, 4, 0]);
+        assert_eq!(r(Haptic::Command { side: 1, command: 2, gain_db: -12 }), [0x82, 1, 2, 0xf4]);
+        assert_eq!(
+            r(Haptic::Tone { side: 0, gain_db: -6, frequency: 440, duration_ms: 250, lfo_freq: 5, lfo_depth: 128 }),
+            [0x83, 0, 0xfa, 0xb8, 0x01, 0xfa, 0x00, 5, 0, 128]
+        );
+        assert_eq!(
+            r(Haptic::Sweep { side: 2, gain_db: 0, duration_ms: 1000, start_hz: 100, end_hz: 2000 }),
+            [0x84, 2, 0, 0xe8, 0x03, 100, 0, 0xd0, 0x07]
+        );
+        assert_eq!(r(Haptic::Script { side: 1, script_id: 17, gain_db: -3 }), [0x85, 1, 17, 0xfd]);
+    }
+
+    /// The UI sends haptics as JSON tagged by `kind`; see `src/tabs/haptics.ts`.
+    #[test]
+    fn haptics_deserialize_from_the_ui() {
+        let h: Haptic = serde_json::from_str(r#"{"kind":"script","side":2,"script_id":3,"gain_db":-12}"#).unwrap();
+        assert_eq!(h, Haptic::Script { side: 2, script_id: 3, gain_db: -12 });
+        let h: Haptic = serde_json::from_str(r#"{"kind":"rumble","left":0,"right":0}"#).unwrap();
+        assert!(h.is_rumble());
+    }
+}

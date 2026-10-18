@@ -250,9 +250,8 @@ documented.
 **Wireless status `0x79` / `0x46`**: byte 1 is `2` when a controller connects to the slot and
 `1` when it disconnects.
 
-**Haptics** (not used yet): output reports `0x80`–`0x85` drive the two haptic motors (rumble,
-pulses, frequency sweeps and scripted effects). SDL's `controller_structs.h` documents the
-layouts.
+**Haptics**: output reports `0x80`–`0x85` drive the two haptic motors; see
+[Haptics](#haptics).
 
 ## Haptics
 

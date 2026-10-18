@@ -77,8 +77,10 @@ struct Player {
     packets: Vec<Packet>,
     /// Next packet to deliver.
     pos: usize,
-    /// When position 0 was (or would have been) played.
-    origin: Instant,
+    /// The play position at `since`. Kept as an offset rather than as the instant position 0
+    /// played: that instant can lie before the clock's origin (boot, on Windows), which panics.
+    offset: Duration,
+    since: Instant,
     paused_at: Option<Duration>,
     looping: bool,
     /// The replayed state must start over: the player restarted or jumped back.
@@ -91,7 +93,7 @@ impl Player {
     }
 
     fn position(&self) -> Duration {
-        self.paused_at.unwrap_or_else(|| self.origin.elapsed()).min(self.duration())
+        self.paused_at.unwrap_or_else(|| self.offset + self.since.elapsed()).min(self.duration())
     }
 
     fn seek(&mut self, to: Duration) {
@@ -100,7 +102,8 @@ impl Player {
             self.pos = 0;
             self.reset = true;
         }
-        self.origin = Instant::now() - to;
+        self.offset = to;
+        self.since = Instant::now();
         if self.paused_at.is_some() {
             self.paused_at = Some(to);
         }
@@ -241,11 +244,12 @@ impl Tape {
         out
     }
 
-    pub fn play(&mut self, name: &str) -> Result<(), String> {
+    /// Replay `packets`, read from the recording `name` (see [`Tape::file`]). Reading happens
+    /// outside the tape's lock: a long recording takes over 100 ms, which would stall live input.
+    pub fn play(&mut self, name: &str, packets: Vec<Packet>) -> Result<(), String> {
         if self.recorder.is_some() {
             return Err("Stop recording first".into());
         }
-        let packets = recording::read_file(&self.path(name)?)?;
         if packets.is_empty() {
             return Err("The recording is empty".into());
         }
@@ -254,7 +258,8 @@ impl Tape {
             name: name.to_string(),
             packets,
             pos: 0,
-            origin: Instant::now(),
+            offset: Duration::ZERO,
+            since: Instant::now(),
             paused_at: None,
             looping,
             reset: true,
@@ -276,7 +281,8 @@ impl Tape {
                     p.seek(Duration::ZERO);
                 }
                 if let Some(at) = p.paused_at.take() {
-                    p.origin = Instant::now() - at;
+                    p.offset = at;
+                    p.since = Instant::now();
                 }
             }
             PlaybackAction::Step => {
@@ -363,13 +369,18 @@ impl Tape {
     }
 
     /// Copy a recording from elsewhere into the recordings folder; returns its name there.
+    /// Check it with [`check_import`] first, outside the tape's lock.
     pub fn import(&mut self, from: &Path) -> Result<String, String> {
-        recording::read_file(from).map_err(|e| format!("{}: {e}", from.display()))?;
         let stem = from.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let (name, path) = self.new_path(if stem.trim().is_empty() { "Imported" } else { &stem })?;
         fs::copy(from, path).map_err(|e| e.to_string())?;
         Ok(name)
     }
+}
+
+/// Whether `from` is a recording that [`Tape::import`] may copy in.
+pub fn check_import(from: &Path) -> Result<(), String> {
+    recording::read_file(from).map(|_| ()).map_err(|e| format!("{}: {e}", from.display()))
 }
 
 #[cfg(test)]
@@ -380,6 +391,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sc-tape-{test}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         Tape::new(dir)
+    }
+
+    fn play(tape: &mut Tape, name: &str) {
+        let packets = recording::read_file(&tape.file(name).unwrap()).unwrap();
+        tape.play(name, packets).unwrap();
     }
 
     fn replayed(tape: &mut Tape) -> Vec<Vec<u8>> {
@@ -403,7 +419,7 @@ mod tests {
         tape.stop_recording().unwrap();
         assert_eq!(tape.list().len(), 2);
 
-        tape.play("take").unwrap();
+        play(&mut tape, "take");
         tape.control(PlaybackAction::Pause).unwrap();
         tape.control(PlaybackAction::Seek { seconds: 0.0 }).unwrap();
         assert!(tape.take_reset());
@@ -415,6 +431,43 @@ mod tests {
 
         tape.delete("take").unwrap();
         assert!(!tape.playing());
+        let _ = fs::remove_dir_all(tape.dir());
+    }
+
+    /// Seeking far into a long recording must not build an `Instant` before the clock's origin:
+    /// on Windows that panics when the PC booted more recently than the seek target.
+    #[test]
+    fn seeks_through_a_long_recording() {
+        let mut tape = temp_tape("seek");
+        fs::create_dir_all(tape.dir()).unwrap();
+        let mut w = Writer::new(Vec::new()).unwrap();
+        for secs in [0, 300, 590, 599] {
+            w.write(Duration::from_secs(secs), "1304:2", &[0x42, secs as u8]).unwrap();
+        }
+        fs::write(tape.path("long").unwrap(), w.finish().unwrap()).unwrap();
+
+        play(&mut tape, "long");
+        assert!(tape.take_reset());
+        assert_eq!(replayed(&mut tape), [vec![0x42, 0]]);
+        tape.control(PlaybackAction::Seek { seconds: 595.0 }).unwrap();
+        assert!(!tape.take_reset(), "seeking forward keeps the state");
+        assert_eq!(replayed(&mut tape), [vec![0x42, 44], vec![0x42, 78]]);
+        let at = tape.status().playback.unwrap().position;
+        assert!((595.0..596.0).contains(&at), "position {at}");
+
+        tape.control(PlaybackAction::Pause).unwrap();
+        tape.control(PlaybackAction::Seek { seconds: 10.0 }).unwrap();
+        assert!(tape.take_reset(), "seeking back starts the state over");
+        assert_eq!(tape.status().playback.unwrap().position, 10.0);
+        tape.control(PlaybackAction::Resume).unwrap();
+        tape.control(PlaybackAction::Seek { seconds: 700.0 }).unwrap();
+        tape.replay(|_, _| {});
+        // Played to the end without looping: it pauses there, and resuming starts over.
+        tape.take_reset();
+        assert!(tape.status().playback.unwrap().paused);
+        tape.control(PlaybackAction::Resume).unwrap();
+        assert!(tape.take_reset());
+        assert!(tape.status().playback.unwrap().position < 1.0);
         let _ = fs::remove_dir_all(tape.dir());
     }
 
