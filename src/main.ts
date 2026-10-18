@@ -5,6 +5,7 @@ import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./contro
 import { controlPlayback, formatTime, importRecordings, playRecording, startRecording, stopRecording } from "./tape";
 import { AboutTab } from "./tabs/about";
 import { HapticsTab } from "./tabs/haptics";
+import { MidiTab } from "./tabs/midi";
 import { RawTab } from "./tabs/raw";
 import { RecorderTab } from "./tabs/recorder";
 import type { Tab } from "./tabs/tab";
@@ -12,7 +13,7 @@ import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
 const recorder = new RecorderTab();
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new RawTab(), recorder, new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new RawTab(), recorder, new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const content = document.querySelector<HTMLElement>("#tab-content")!;

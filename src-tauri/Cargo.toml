@@ -1,6 +1,6 @@
 [package]
 name = "steam-controller-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "Steam Controller toolkit: live input visualizer and more"
 authors = ["GGenie"]
 edition = "2024"
@@ -20,3 +20,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tauri-plugin-opener = "2"
+midir = "0.11"
+
+# Windows MIDI Services (our own virtual MIDI port on Windows 11 25H2+): runtime for the
+# generated bindings in src/midi2_bindings.rs (tools/midi2-bindings).
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.100"
+windows-collections = "0.100"

@@ -20,7 +20,7 @@ export class AboutTab implements Tab {
           <img src="/logo.png" alt="" />
           <div>
             <h1>Steam Controller Toolkit</h1>
-            <p class="muted"><span data-version></span>A tinkering toolkit for the 2026 Steam Controller: live input, raw reports, and more to come.</p>
+            <p class="muted"><span data-version></span>A tinkering toolkit for the 2026 Steam Controller: live input, haptics, MIDI for your DAW, raw reports and recordings.</p>
             <div class="about-links">
               <a class="gbtn" href="${REPO}">Source on GitHub</a>
               <a class="gbtn" href="${REPO}/blob/main/docs/PROTOCOL.md">Protocol notes</a>
@@ -50,6 +50,9 @@ export class AboutTab implements Tab {
               <li><a href="https://github.com/libusb/hidapi">hidapi</a> and <a href="https://github.com/ruabmbua/hidapi-rs">hidapi-rs</a>: USB/HID access</li>
               <li><a href="https://tauri.app">Tauri</a>: the app shell</li>
               <li><a href="https://threejs.org">three.js</a>: the 3D view</li>
+              <li><a href="https://github.com/Boddlnagg/midir">midir</a>: MIDI ports</li>
+              <li><a href="https://github.com/microsoft/MIDI">Windows MIDI Services</a>: the Windows MIDI port
+                (Microsoft's preview API, used until Windows ships it)</li>
             </ul>
           </section>
           <section class="tile">

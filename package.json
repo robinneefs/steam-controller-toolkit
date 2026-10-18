@@ -1,14 +1,15 @@
 {
   "name": "steam-controller-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "probe": "cargo run -p sc-core --example probe --"
+    "probe": "cargo run -p sc-core --example probe --",
+    "version": "node tools/sync-version.mjs && git add src-tauri/Cargo.toml Cargo.lock"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

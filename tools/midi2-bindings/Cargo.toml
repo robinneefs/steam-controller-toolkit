@@ -1,0 +1,11 @@
+[package]
+name = "midi2-bindings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Not part of the app's workspace: run it by hand (see README.md).
+[workspace]
+
+[dependencies]
+windows-bindgen = "=0.100.0"

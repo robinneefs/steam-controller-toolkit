@@ -46,6 +46,78 @@ export interface Snapshot {
   steam_running: boolean;
   /** Recorder and player state. While a recording plays, the rest of the snapshot is replayed. */
   tape: TapeStatus;
+  /** MIDI output state; MIDI follows whatever this snapshot shows (live input or a replay). */
+  midi: MidiStatus;
+}
+
+/** Mirrors `OutputChoice` in src-tauri/src/midi_out.rs. */
+export type MidiOutputChoice = { kind: "off" } | { kind: "virtual" } | { kind: "port"; name: string };
+
+/** Mirrors `MidiStatus` in src-tauri/src/midi_out.rs. */
+export interface MidiStatus {
+  output: MidiOutputChoice;
+  connected: string | null;
+  /** A port is being opened. */
+  connecting: boolean;
+  error: string | null;
+  /** Messages sent over the last second. */
+  rate: number;
+  /** Output level 0..1 of each mapping, in preset order. */
+  levels: (number | null)[];
+  /** Cell under the finger on the left and right pad grids, and whether it plays a note. */
+  cells: [[number, boolean] | null, [number, boolean] | null];
+  /** Latest messages, oldest first, as [number, bytes]. */
+  log: [number, number[]][];
+  learning: boolean;
+  learned: string | null;
+}
+
+/** The types below mirror src-tauri/src/midi.rs. */
+export type MidiTarget =
+  | { kind: "cc"; cc: number; hi_res: boolean }
+  | { kind: "pitch_bend" }
+  | { kind: "channel_pressure" }
+  | { kind: "note"; note: number; velocity: number }
+  | { kind: "program"; program: number };
+
+export interface MidiMapping {
+  enabled: boolean;
+  /** An axis name (see `SOURCES` in tabs/midi.ts) or `button:<name>`. */
+  source: string;
+  target: MidiTarget;
+  channel: number;
+  range: [number, number];
+  invert: boolean;
+  deadzone: number;
+  curve: number;
+  smoothing: number;
+  toggle: boolean;
+  hold: string | null;
+}
+
+export type MidiScale =
+  | "chromatic" | "major" | "minor" | "major_pentatonic" | "minor_pentatonic" | "blues" | "dorian" | "harmonic_minor";
+
+export interface PadGrid {
+  enabled: boolean;
+  channel: number;
+  cols: number;
+  rows: number;
+  root: number;
+  scale: MidiScale;
+  row_step: number;
+  trigger: "touch" | "click";
+  velocity: number;
+  dynamic_velocity: boolean;
+  slide: boolean;
+  pressure: "off" | "poly" | "channel";
+}
+
+export interface MidiPreset {
+  name: string;
+  mappings: MidiMapping[];
+  left_pad: PadGrid;
+  right_pad: PadGrid;
 }
 
 /** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */

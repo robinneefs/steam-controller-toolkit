@@ -13,7 +13,16 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
+mod midi;
+#[cfg(windows)]
+#[allow(non_snake_case, non_camel_case_types, non_upper_case_globals, dead_code, clippy::all)]
+mod midi2_bindings;
+mod midi_out;
+#[cfg(windows)]
+mod midi_win;
 mod tape;
+use midi::Preset;
+use midi_out::{MidiOut, MidiPorts, MidiStatus, OutputChoice, PresetInfo};
 use tape::{PlaybackAction, RecordingInfo, Tape, TapeStatus};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
@@ -37,6 +46,8 @@ struct Snapshot {
     steam_running: bool,
     /// Recorder and player state. While a recording plays, the rest of the snapshot is replayed.
     tape: TapeStatus,
+    /// MIDI output state; MIDI follows whatever this snapshot shows (live input or a replay).
+    midi: MidiStatus,
 }
 
 const STEAM_PROCESS: &str = if cfg!(windows) {
@@ -151,6 +162,83 @@ async fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> 
     paths.iter().map(|p| tape.import(p)).collect()
 }
 
+type SharedMidi = Arc<Mutex<MidiOut>>;
+
+/// The preset being played and where MIDI goes, for the MIDI tab to start from.
+#[derive(Serialize)]
+struct MidiSetup {
+    preset: Preset,
+    output: OutputChoice,
+}
+
+#[tauri::command]
+fn midi_setup(midi: State<'_, SharedMidi>) -> MidiSetup {
+    let midi = midi.lock().unwrap();
+    MidiSetup { preset: midi.preset().clone(), output: midi.output().clone() }
+}
+
+/// MIDI output ports on this computer.
+#[tauri::command]
+async fn midi_ports() -> Result<MidiPorts, String> {
+    MidiOut::ports()
+}
+
+#[tauri::command]
+async fn midi_set_output(output: OutputChoice, midi: State<'_, SharedMidi>) -> Result<(), String> {
+    midi.lock().unwrap().set_output(output);
+    Ok(())
+}
+
+/// Play `preset` from now on (the MIDI tab sends it after every edit).
+#[tauri::command]
+fn midi_set_preset(preset: Preset, midi: State<'_, SharedMidi>) {
+    midi.lock().unwrap().set_preset(preset);
+}
+
+#[tauri::command]
+fn midi_panic(midi: State<'_, SharedMidi>) {
+    midi.lock().unwrap().panic();
+}
+
+/// Start (or with `on` false, stop) waiting for an input to move; the snapshot reports it.
+#[tauri::command]
+fn midi_learn(on: bool, midi: State<'_, SharedMidi>) {
+    let mut midi = midi.lock().unwrap();
+    if on { midi.start_learn() } else { midi.cancel_learn() }
+}
+
+#[tauri::command]
+async fn midi_list_presets(midi: State<'_, SharedMidi>) -> Result<Vec<PresetInfo>, String> {
+    Ok(midi.lock().unwrap().list_presets())
+}
+
+/// Load a preset and start playing it; returns it for the editor.
+#[tauri::command]
+async fn midi_load_preset(name: String, builtin: bool, midi: State<'_, SharedMidi>) -> Result<Preset, String> {
+    let mut midi = midi.lock().unwrap();
+    let preset = midi.load_preset(&name, builtin)?;
+    midi.set_preset(preset.clone());
+    Ok(preset)
+}
+
+/// Save the preset being played under `name`.
+#[tauri::command]
+async fn midi_save_preset(name: String, midi: State<'_, SharedMidi>) -> Result<(), String> {
+    midi.lock().unwrap().save_preset(&name)
+}
+
+#[tauri::command]
+async fn midi_delete_preset(name: String, midi: State<'_, SharedMidi>) -> Result<(), String> {
+    midi.lock().unwrap().delete_preset(&name)
+}
+
+/// Open the saved presets folder in the file manager.
+#[tauri::command]
+async fn midi_reveal_presets(app: AppHandle, midi: State<'_, SharedMidi>) -> Result<(), String> {
+    let dir = midi.lock().unwrap().presets_folder()?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// A [`Snapshot`] built up from reports, one for live input and one for a replayed recording.
 #[derive(Default)]
 struct Fold {
@@ -160,7 +248,8 @@ struct Fold {
 }
 
 impl Fold {
-    fn packet(&mut self, slot: &str, data: &[u8]) {
+    /// Fold in one report; returns the state if it was a state report.
+    fn packet(&mut self, slot: &str, data: &[u8]) -> Option<ControllerState> {
         let snap = &mut self.snap;
         match protocol::parse(data) {
             Some(Report::State(s)) => {
@@ -168,6 +257,7 @@ impl Fold {
                 snap.state = Some(s);
                 snap.raw = data.to_vec();
                 self.rate_count += 1;
+                return Some(s);
             }
             Some(Report::Battery(b)) => snap.battery = Some(b),
             Some(Report::Wireless(false)) => self.closed(slot),
@@ -180,6 +270,7 @@ impl Fold {
             },
             _ => {}
         }
+        None
     }
 
     fn closed(&mut self, slot: &str) {
@@ -194,7 +285,7 @@ impl Fold {
     }
 }
 
-fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape) {
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, midi: SharedMidi) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
@@ -203,31 +294,58 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
     let mut replay = Fold::default();
     let mut next_emit = Instant::now();
     let mut rate_window = Instant::now();
+    // MIDI follows what the UI shows: live input, or the recording while one plays.
+    let mut playing = false;
     loop {
         // Wake up in time for the next replayed report.
         let wait = tape.lock().unwrap().next_due().map_or(EMIT_INTERVAL, |d| d.min(EMIT_INTERVAL));
         match rx.recv_timeout(wait) {
             Ok(HubEvent::Packet { slot, data }) => {
-                live.packet(&slot, &data);
+                let state = live.packet(&slot, &data);
                 tape.lock().unwrap().record(&slot, &data);
+                if let (Some(s), false) = (state, playing) {
+                    midi.lock().unwrap().process(&s);
+                }
+                if live.snap.state.is_none() && !playing {
+                    midi.lock().unwrap().release_all();
+                }
             }
-            Ok(HubEvent::Closed { slot, .. }) => live.closed(&slot),
+            Ok(HubEvent::Closed { slot, .. }) => {
+                live.closed(&slot);
+                if live.snap.state.is_none() && !playing {
+                    midi.lock().unwrap().release_all();
+                }
+            }
             Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
         }
         let mut deck = tape.lock().unwrap();
         if deck.take_reset() {
             replay = Fold::default();
+            // A new recording or a seek: notes held at the old position would hang.
+            midi.lock().unwrap().release_all();
             if let Some((slot, data)) = deck.first_battery() {
                 replay.packet(slot, data);
             }
         }
-        deck.replay(|slot, data| replay.packet(slot, data));
+        let now_playing = deck.playing();
+        if now_playing != playing {
+            playing = now_playing;
+            midi.lock().unwrap().release_all();
+        }
+        deck.replay(|slot, data| {
+            if let Some(s) = replay.packet(slot, data)
+                && playing
+            {
+                midi.lock().unwrap().process(&s);
+            }
+        });
         replay.snap.report_rate = deck.replay_rate();
-        let playing = deck.playing();
         let now = Instant::now();
         let status = (now >= next_emit).then(|| deck.status());
         drop(deck);
+        // Outside the tape lock: reconnecting to a port can take a moment.
+        midi.lock().unwrap().tick();
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
             rate_window = Instant::now();
@@ -240,6 +358,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
             let snap = if playing { &mut replay.snap } else { &mut live.snap };
             snap.steam_running = steam_running.load(Ordering::Relaxed);
             snap.tape = status;
+            snap.midi = midi.lock().unwrap().status();
             let _ = app.emit("controller", &*snap);
         }
     }
@@ -260,16 +379,89 @@ pub fn run() {
             delete_recording,
             reveal_recording,
             import_recordings,
+            midi_setup,
+            midi_ports,
+            midi_set_output,
+            midi_set_preset,
+            midi_panic,
+            midi_learn,
+            midi_list_presets,
+            midi_load_preset,
+            midi_save_preset,
+            midi_delete_preset,
+            midi_reveal_presets,
         ])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
             app.manage(hub::spawn(tx, HubOptions::default()));
             let tape: SharedTape = Arc::new(Mutex::new(Tape::new(app.path().app_data_dir()?.join("recordings"))));
             app.manage(tape.clone());
+            let midi: SharedMidi = Arc::new(Mutex::new(MidiOut::new(app.path().app_data_dir()?.join("midi"))));
+            app.manage(midi.clone());
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle, rx, tape));
+            thread::spawn(move || forward_events(handle, rx, tape, midi));
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod screenshot_data {
+    use super::*;
+    use std::collections::VecDeque;
+
+    /// Replays a recording through the same folds and MIDI engine as the app and writes the
+    /// snapshots the UI would get (60 per second), plus the MIDI preset, as JSON for the README
+    /// screenshots (tools/screenshots):
+    /// `SC_RECORDING=<file.screc> SC_SNAPSHOTS=<out.json> cargo test -p steam-controller-app --lib snapshots -- --ignored`
+    #[test]
+    #[ignore]
+    fn snapshots() {
+        let input = std::env::var("SC_RECORDING").expect("SC_RECORDING");
+        let output = std::env::var("SC_SNAPSHOTS").expect("SC_SNAPSHOTS");
+        let packets = sc_core::recording::read_file(std::path::Path::new(&input)).unwrap();
+        let mut fold = Fold::default();
+        // The default preset, with notes on the right pad so the MIDI tab's grid lights up.
+        let mut preset = midi::Preset::default();
+        preset.right_pad = midi::builtin_presets()[1].right_pad;
+        let mut engine = midi::Engine::new(preset.clone());
+        let (mut msgs, mut log, mut sent) = (Vec::new(), VecDeque::new(), 0u64);
+        let mut states: VecDeque<Duration> = VecDeque::new();
+        let mut frames = Vec::new();
+        let mut next = Duration::ZERO;
+        for p in &packets {
+            while p.at >= next {
+                while states.front().is_some_and(|t| next.saturating_sub(*t) > Duration::from_secs(1)) {
+                    states.pop_front();
+                }
+                fold.snap.report_rate = states.len() as u32;
+                fold.snap.midi = MidiStatus {
+                    output: OutputChoice::Virtual,
+                    connected: Some("Steam Controller".into()),
+                    rate: 180,
+                    levels: engine.levels(),
+                    cells: engine.grid_cells(),
+                    log: log.iter().cloned().collect(),
+                    ..Default::default()
+                };
+                frames.push(fold.snap.clone());
+                next += EMIT_INTERVAL;
+            }
+            if let Some(s) = fold.packet(&p.slot, &p.data) {
+                states.push_back(p.at);
+                engine.process(&s, &mut msgs);
+                for m in msgs.drain(..) {
+                    sent += 1;
+                    log.push_back((sent, m.as_slice().to_vec()));
+                    if log.len() > 14 {
+                        log.pop_front();
+                    }
+                }
+            }
+        }
+        let json = serde_json::json!({ "preset": preset, "frames": frames });
+        std::fs::write(output, json.to_string()).unwrap();
+        println!("{} frames", frames.len());
+    }
 }
