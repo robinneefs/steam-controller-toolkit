@@ -123,6 +123,8 @@ pub struct MidiOut {
     rate_count: u32,
     rate_window: Instant,
     buf: Vec<Msg>,
+    /// Writes `config.json` (see [`MidiOut::save_config`]).
+    saver: mpsc::Sender<String>,
 }
 
 impl MidiOut {
@@ -134,6 +136,18 @@ impl MidiOut {
         // Out of the box, send to our own port: nothing to set up but picking it in the DAW.
         let auto_virtual = saved.is_none();
         let config = saved.unwrap_or_else(|| Config { output: OutputChoice::Virtual, ..Default::default() });
+        let (saver, configs) = mpsc::channel::<String>();
+        let config_dir = dir.clone();
+        thread::spawn(move || {
+            while let Ok(mut json) = configs.recv() {
+                // Only the newest config matters.
+                while let Ok(newer) = configs.try_recv() {
+                    json = newer;
+                }
+                let _ = fs::create_dir_all(&config_dir);
+                let _ = fs::write(config_dir.join("config.json"), json);
+            }
+        });
         MidiOut {
             engine: Engine::new(config.preset),
             output: config.output,
@@ -149,6 +163,7 @@ impl MidiOut {
             rate_count: 0,
             rate_window: Instant::now(),
             buf: Vec::new(),
+            saver,
         }
     }
 
@@ -156,11 +171,13 @@ impl MidiOut {
         self.dir.join("presets")
     }
 
+    /// Save the config on the saver thread. Every preset edit saves it, and writing it here would
+    /// hold the lock the event loop needs for MIDI output (a small write can take milliseconds on
+    /// Windows, e.g. while Defender scans the file).
     fn save_config(&self) {
         let config = Config { output: self.output.clone(), preset: self.engine.preset().clone() };
-        let _ = fs::create_dir_all(&self.dir);
         if let Ok(json) = serde_json::to_string_pretty(&config) {
-            let _ = fs::write(self.dir.join("config.json"), json);
+            let _ = self.saver.send(json);
         }
     }
 
@@ -423,4 +440,35 @@ fn virtual_is_default() -> bool {
 fn open_virtual() -> Opened {
     let port = crate::midi_win::VirtualPort::open()?;
     Ok((Sink::Virtual(port), crate::midi_win::PORT_NAME.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_is_saved_and_restored() {
+        let dir = std::env::temp_dir().join(format!("sc-midi-config-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut midi = MidiOut::new(dir.clone());
+        // Quick edits, like a slider drag: the saver writes them in order, ending on the last.
+        for name in ["a", "b", "last"] {
+            midi.set_preset(Preset { name: name.into(), ..builtin_presets().remove(1) });
+        }
+        midi.set_output(OutputChoice::Off);
+        let started = Instant::now();
+        let saved = loop {
+            let saved = fs::read_to_string(dir.join("config.json")).ok().and_then(|s| serde_json::from_str::<Config>(&s).ok());
+            match saved {
+                Some(c) if c.output == OutputChoice::Off => break c,
+                _ if started.elapsed() > Duration::from_secs(5) => panic!("config.json was not saved"),
+                _ => thread::sleep(Duration::from_millis(10)),
+            }
+        };
+        assert_eq!(saved.preset.name, "last");
+        let restored = MidiOut::new(dir.clone());
+        assert_eq!(restored.output(), &OutputChoice::Off);
+        assert_eq!(restored.preset().name, "last");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

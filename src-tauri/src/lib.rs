@@ -423,8 +423,7 @@ mod screenshot_data {
         let packets = sc_core::recording::read_file(std::path::Path::new(&input)).unwrap();
         let mut fold = Fold::default();
         // The default preset, with notes on the right pad so the MIDI tab's grid lights up.
-        let mut preset = midi::Preset::default();
-        preset.right_pad = midi::builtin_presets()[1].right_pad;
+        let preset = midi::Preset { right_pad: midi::builtin_presets()[1].right_pad, ..Default::default() };
         let mut engine = midi::Engine::new(preset.clone());
         let (mut msgs, mut log, mut sent) = (Vec::new(), VecDeque::new(), 0u64);
         let mut states: VecDeque<Duration> = VecDeque::new();
