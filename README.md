@@ -48,6 +48,8 @@ Play every haptic effect the controller supports, on the left, right or both act
 - **Pulse trains** and **frequency sweeps**.
 - The bytes of the last report sent, for protocol work.
 
+![Haptics tab: rumble, taps, pulse trains, tone with a piano keyboard and sweeps](docs/screenshots/haptics.png)
+
 ### Raw data
 
 ![Raw data tab: connection details, colour-coded byte map, decoded inputs and motion](docs/screenshots/raw-data.png)
