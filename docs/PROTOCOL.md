@@ -15,10 +15,11 @@ The controller has no public protocol documentation. Our main reference is SDL's
 3. [Configuring it: lizard mode and the IMU](#configuring-it-lizard-mode-and-the-imu)
 4. [Input reports](#input-reports)
 5. [Other reports](#other-reports)
-6. [Reading reports reliably](#reading-reports-reliably)
-7. [From reports to the UI](#from-reports-to-the-ui)
-8. [Interaction with Steam](#interaction-with-steam)
-9. [Platform notes](#platform-notes)
+6. [Haptics](#haptics)
+7. [Reading reports reliably](#reading-reports-reliably)
+8. [From reports to the UI](#from-reports-to-the-ui)
+9. [Interaction with Steam](#interaction-with-steam)
+10. [Platform notes](#platform-notes)
 
 ## Overview
 
@@ -252,6 +253,31 @@ documented.
 **Haptics** (not used yet): output reports `0x80`–`0x85` drive the two haptic motors (rumble,
 pulses, frequency sweeps and scripted effects). SDL's `controller_structs.h` documents the
 layouts.
+
+## Haptics
+
+Haptic effects are **output reports** (written with `hid_write`, not feature reports), from
+`ID_OUT_REPORT_HAPTIC_*` in SDL's `controller_structs.h`. All six play on the controller
+(verified over the Puck; `cargo run -p sc-core --example haptics` measures each one with the
+accelerometer). They are built by `protocol::haptic_report()` from a `protocol::Haptic` and sent
+with `Command::Haptic`.
+
+`side` picks the actuators as a bitmask: `1` left, `2` right, `3` both. `0` plays on the left.
+(Checked by hand with `--example haptics -- --identify`.) `gain_db` is a signed byte in dB.
+
+| Id | Effect | Payload after the id (packed, little-endian) |
+|---|---|---|
+| `0x80` | Rumble | `type u8, intensity u16, left_speed u16, left_gain i8, right_speed u16, right_gain i8` |
+| `0x81` | Pulse train | `side u8, on_us u16, off_us u16, repeat_count u16` |
+| `0x82` | Built-in effect | `side u8, command u8, gain_db i8`; command 0 off, 1 tick, 2 click, 3 tone, 4 rumble, 5 noise, 6 script, 7 sweep |
+| `0x83` | Tone | `side u8, gain_db i8, frequency u16, duration_ms u16, lfo_freq u16, lfo_depth u8` |
+| `0x84` | Log sweep | `side u8, gain_db i8, duration_ms u16, start_hz u16, end_hz u16` |
+| `0x85` | Script | `side u8, script_id u8, gain_db i8` |
+
+Rumble is a gamepad-style effect for both motors at once; like SDL we send `type`, `intensity`
+and the gains as 0. The controller stops a rumble about 50 ms after the last report, so the
+interface's reader thread resends the current one every 40 ms until a rumble with both speeds 0
+arrives (`hub::read_loop`).
 
 ## Reading reports reliably
 

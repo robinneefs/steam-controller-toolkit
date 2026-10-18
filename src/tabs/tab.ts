@@ -8,4 +8,6 @@ export interface Tab {
   mount(root: HTMLElement): void;
   /** Called with every snapshot while the tab is visible. */
   update?(snap: Snapshot): void;
+  /** Called when another tab is opened. */
+  hide?(): void;
 }

@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use sc_core::hub::{self, HubOptions};
-use sc_core::protocol::{self, BatteryStatus, Report};
+use sc_core::protocol::{self, BatteryStatus, Haptic, Report};
 use sc_core::{Command, ControllerState, Hub, HubEvent};
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
@@ -67,6 +67,17 @@ async fn turn_off_controller(slot: String, hub: State<'_, Hub>) -> Result<(), St
         .map_err(|_| "The controller did not respond".to_string())?
 }
 
+/// Play a haptic effect on the controller on `slot` and return the report's bytes. A rumble
+/// keeps playing until a rumble with both speeds 0 is sent.
+#[tauri::command]
+async fn play_haptic(slot: String, haptic: Haptic, hub: State<'_, Hub>) -> Result<Vec<u8>, String> {
+    let (reply, rx) = mpsc::channel();
+    hub.send(&slot, Command::Haptic { haptic, reply })?;
+    rx.recv_timeout(Duration::from_secs(2))
+        .map_err(|_| "The controller did not respond".to_string())??;
+    Ok(protocol::haptic_report(&haptic))
+}
+
 fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
@@ -107,7 +118,8 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
         }
         if rate_window.elapsed() >= Duration::from_secs(1) {
-            snap.report_rate = rate_count;            rate_count = 0;
+            snap.report_rate = rate_count;
+            rate_count = 0;
             rate_window = Instant::now();
         }
         if last_emit.elapsed() >= EMIT_INTERVAL {
@@ -122,7 +134,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![turn_off_controller])
+        .invoke_handler(tauri::generate_handler![turn_off_controller, play_haptic])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
             app.manage(hub::spawn(tx, HubOptions::default()));

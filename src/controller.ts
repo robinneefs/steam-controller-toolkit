@@ -76,6 +76,15 @@ export const REPORT_NAMES: Record<number, string> = {
   0x47: "state + pad timestamp",
 };
 
+/** A haptic effect for the `play_haptic` command; mirrors `Haptic` in protocol.rs. */
+export type Haptic =
+  | { kind: "rumble"; left: number; right: number }
+  | { kind: "pulse"; side: number; on_us: number; off_us: number; repeat: number }
+  | { kind: "command"; side: number; command: number; gain_db: number }
+  | { kind: "tone"; side: number; gain_db: number; frequency: number; duration_ms: number; lfo_freq: number; lfo_depth: number }
+  | { kind: "sweep"; side: number; gain_db: number; duration_ms: number; start_hz: number; end_hz: number }
+  | { kind: "script"; side: number; script_id: number; gain_db: number };
+
 export function hex(bytes: number[]): string {
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
 }

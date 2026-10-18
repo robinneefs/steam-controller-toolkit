@@ -38,6 +38,16 @@ everything it sends, live (~265 reports per second). It is organised in tabs, on
 - **Buttons panel** laid out like the controller, including the L4/L5/R4/R5 back buttons and
   the grip, stick and pad touch sensors.
 
+### Haptics
+
+Play every haptic effect the controller supports, on the left, right or both actuators:
+
+- **Rumble** with a slider for each motor.
+- **Built-in effects** (tick, click, tone, rumble, noise) and the firmware's stored scripts.
+- **Tone** with frequency, duration and LFO, plus a two-octave **piano** to play notes.
+- **Pulse trains** and **frequency sweeps**.
+- The bytes of the last report sent, for protocol work.
+
 ### Raw data
 
 ![Raw data tab: connection details, colour-coded byte map, decoded inputs and motion](docs/screenshots/raw-data.png)
@@ -130,7 +140,7 @@ npm run probe -- --raw --seconds 10
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
 | `src-tauri` | Tauri backend: runs the device layer and streams snapshots to the UI |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Raw data and About tabs |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, Raw data and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |

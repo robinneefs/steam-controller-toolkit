@@ -7,12 +7,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::device::{find_controller_interfaces, rescan, valve_api, Controller};
-use crate::protocol;
+use crate::protocol::{self, Haptic};
 
 const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
+/// The controller stops a rumble after ~50 ms without a fresh report; SDL resends every 40 ms.
+const RUMBLE_RESEND: Duration = Duration::from_millis(40);
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
@@ -29,6 +31,9 @@ pub enum HubEvent {
 pub enum Command {
     /// Ask the controller to power off. `reply` gets the HID error, if any.
     TurnOff { reply: Sender<Result<(), String>> },
+    /// Play a haptic effect. A rumble keeps playing (resent by the reader) until one with both
+    /// speeds 0 replaces it.
+    Haptic { haptic: Haptic, reply: Sender<Result<(), String>> },
 }
 
 /// Handle for sending [`Command`]s to the interfaces the hub has open.
@@ -106,6 +111,8 @@ fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, commands: &
     // Only configure a slot once a controller in it has sent state, like SDL does. Sending
     // settings to empty dongle slots fails every time and may wedge the dongle.
     let mut active = false;
+    // The rumble being kept alive, and when it was last sent.
+    let mut rumble: Option<(Haptic, Instant)> = None;
     loop {
         if configure && active {
             let _ = ctl.keep_configured();
@@ -116,6 +123,19 @@ fn read_loop(mut ctl: Controller, slot: &str, tx: &Sender<HubEvent>, commands: &
                 Command::TurnOff { reply } => {
                     let _ = reply.send(ctl.turn_off().map_err(|e| e.to_string()));
                 }
+                Command::Haptic { haptic, reply } => {
+                    if haptic.is_rumble() {
+                        let stop = haptic == (Haptic::Rumble { left: 0, right: 0 });
+                        rumble = (!stop).then(|| (haptic, Instant::now()));
+                    }
+                    let _ = reply.send(ctl.haptic(&haptic).map_err(|e| e.to_string()));
+                }
+            }
+        }
+        if let Some((haptic, sent)) = &mut rumble {
+            if sent.elapsed() >= RUMBLE_RESEND {
+                *sent = Instant::now();
+                let _ = ctl.haptic(haptic);
             }
         }
         match ctl.read_raw(&mut buf, 500) {

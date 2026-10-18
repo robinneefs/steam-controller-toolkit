@@ -3,7 +3,7 @@
 //! Reference: SDL's `src/joystick/hidapi/SDL_hidapi_steam_triton.c` and
 //! `steam/controller_structs.h`. All multi-byte fields are little-endian and packed.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const VALVE_VID: u16 = 0x28DE;
 /// Wireless receiver ("Proteus" dongle). Interfaces 2..=5 are the four controller slots.
@@ -54,6 +54,77 @@ pub fn turn_off_report() -> [u8; FEATURE_REPORT_BYTES] {
     buf[2] = 4; // payload length
     buf[3..7].copy_from_slice(b"off!");
     buf
+}
+
+const OUT_HAPTIC_RUMBLE: u8 = 0x80;
+const OUT_HAPTIC_PULSE: u8 = 0x81;
+const OUT_HAPTIC_COMMAND: u8 = 0x82;
+const OUT_HAPTIC_LFO_TONE: u8 = 0x83;
+const OUT_HAPTIC_LOG_SWEEP: u8 = 0x84;
+const OUT_HAPTIC_SCRIPT: u8 = 0x85;
+
+/// A haptic effect, sent as an output report (`ID_OUT_REPORT_HAPTIC_*` in SDL's
+/// `controller_structs.h`). `side` picks the actuators as a bitmask: 1 left, 2 right, 3 both
+/// (0 also plays on the left; verified by hand). `gain_db` is relative to full strength.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Haptic {
+    /// Continuous rumble, like a gamepad's two motors. The controller stops it after ~50 ms
+    /// unless it is resent, which the hub does until a rumble with both speeds 0 arrives.
+    Rumble { left: u16, right: u16 },
+    /// `repeat + 1` pulses of `on_us` with `off_us` gaps.
+    Pulse { side: u8, on_us: u16, off_us: u16, repeat: u16 },
+    /// A built-in effect: 0 off, 1 tick, 2 click, 3 tone, 4 rumble, 5 noise, 6 script, 7 sweep.
+    Command { side: u8, command: u8, gain_db: i8 },
+    /// A tone at `frequency` Hz, its amplitude modulated at `lfo_freq` Hz by `lfo_depth`.
+    Tone { side: u8, gain_db: i8, frequency: u16, duration_ms: u16, lfo_freq: u16, lfo_depth: u8 },
+    /// A logarithmic frequency sweep from `start_hz` to `end_hz`.
+    Sweep { side: u8, gain_db: i8, duration_ms: u16, start_hz: u16, end_hz: u16 },
+    /// A haptic pattern stored in the firmware.
+    Script { side: u8, script_id: u8, gain_db: i8 },
+}
+
+impl Haptic {
+    pub fn is_rumble(&self) -> bool {
+        matches!(self, Haptic::Rumble { .. })
+    }
+}
+
+/// Output report for `h`, report id first.
+pub fn haptic_report(h: &Haptic) -> Vec<u8> {
+    let mut b = Vec::with_capacity(10);
+    match *h {
+        Haptic::Rumble { left, right } => {
+            b.extend([OUT_HAPTIC_RUMBLE, 0]); // type
+            b.extend(0u16.to_le_bytes()); // intensity
+            b.extend(left.to_le_bytes());
+            b.push(0); // left gain
+            b.extend(right.to_le_bytes());
+            b.push(0); // right gain
+        }
+        Haptic::Pulse { side, on_us, off_us, repeat } => {
+            b.extend([OUT_HAPTIC_PULSE, side]);
+            b.extend(on_us.to_le_bytes());
+            b.extend(off_us.to_le_bytes());
+            b.extend(repeat.to_le_bytes());
+        }
+        Haptic::Command { side, command, gain_db } => b.extend([OUT_HAPTIC_COMMAND, side, command, gain_db as u8]),
+        Haptic::Tone { side, gain_db, frequency, duration_ms, lfo_freq, lfo_depth } => {
+            b.extend([OUT_HAPTIC_LFO_TONE, side, gain_db as u8]);
+            b.extend(frequency.to_le_bytes());
+            b.extend(duration_ms.to_le_bytes());
+            b.extend(lfo_freq.to_le_bytes());
+            b.push(lfo_depth);
+        }
+        Haptic::Sweep { side, gain_db, duration_ms, start_hz, end_hz } => {
+            b.extend([OUT_HAPTIC_LOG_SWEEP, side, gain_db as u8]);
+            b.extend(duration_ms.to_le_bytes());
+            b.extend(start_hz.to_le_bytes());
+            b.extend(end_hz.to_le_bytes());
+        }
+        Haptic::Script { side, script_id, gain_db } => b.extend([OUT_HAPTIC_SCRIPT, side, script_id, gain_db as u8]),
+    }
+    b
 }
 
 pub mod buttons {

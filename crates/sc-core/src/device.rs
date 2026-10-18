@@ -75,6 +75,11 @@ impl Controller {
         self.dev.send_feature_report(&protocol::turn_off_report())
     }
 
+    /// Play a haptic effect (see [`protocol::Haptic`]).
+    pub fn haptic(&self, h: &protocol::Haptic) -> HidResult<()> {
+        self.dev.write(&protocol::haptic_report(h)).map(|_| ())
+    }
+
     /// Read one raw report into `buf`; returns the number of bytes, 0 on timeout.
     pub fn read_raw(&self, buf: &mut [u8], timeout_ms: i32) -> HidResult<usize> {
         self.dev.read_timeout(buf, timeout_ms)

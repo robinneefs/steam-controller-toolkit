@@ -1,8 +1,8 @@
 # Steam Controller Toolkit
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
-(codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Raw data (device facts
-and report bytes) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+(codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
+effect), Raw data (device facts and report bytes) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs, rounded tiles.
 
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
@@ -46,6 +46,11 @@ Reference implementation: SDL `src/joystick/hidapi/SDL_hidapi_steam_triton.c` an
 - Power off: feature report `[0x01, 0x9F, 4, 'o','f','f','!']` (`ID_TURN_OFF_CONTROLLER`, payload
   from the original Steam Controller), sent via `Hub::send(slot, Command::TurnOff)`. SDL's Triton
   driver never uses it, but it works on this controller (verified over the Puck dongle).
+- Haptics: output reports `0x80`..`0x85` (rumble, pulse, built-in effect, tone, sweep, script;
+  `protocol::Haptic`), sent with `Hub::send(slot, Command::Haptic { .. })`. All verified on
+  hardware. `side` is a bitmask: 1 left, 2 right, 3 both (0 = left). A rumble stops ~50 ms
+  after the last report, so `read_loop` resends it every 40 ms until both speeds are 0.
+  `cargo run -p sc-core --example haptics [-- --identify]` tests them.
 - Input report `0x42` (54 bytes, includes orientation quaternion) observed at ~265 Hz.
   `0x45` has no quaternion, `0x47` adds a trackpad timestamp. `0x43` battery, `0x79`/`0x46`
   wireless connect/disconnect. `0x7b` seen but undecoded.

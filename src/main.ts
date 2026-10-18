@@ -2,12 +2,13 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./controller";
 import { AboutTab } from "./tabs/about";
+import { HapticsTab } from "./tabs/haptics";
 import { RawTab } from "./tabs/raw";
 import type { Tab } from "./tabs/tab";
 import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
-const tabs: Tab[] = [new VisualizerTab(), new RawTab(), new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new RawTab(), new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const content = document.querySelector<HTMLElement>("#tab-content")!;
@@ -18,6 +19,7 @@ let active: Tab = tabs[0];
 let lastSnapshot: Snapshot | null = null;
 
 function show(tab: Tab): void {
+  if (tab !== active) active.hide?.();
   active = tab;
   if (!panes.has(tab.id)) {
     const pane = document.createElement("div");
