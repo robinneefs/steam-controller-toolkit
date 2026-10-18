@@ -7,7 +7,8 @@ name: Build
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    # Plain version tags only; per-platform release tags like v0.1.0-windows-portable are skipped.
+    tags: ["v*", "!v*-*"]
 
 permissions:
   contents: write # tauri-action creates the draft release
