@@ -392,9 +392,12 @@ mod tests {
     fn records_and_steps_through_a_recording() {
         let mut tape = temp_tape("steps");
         assert_eq!(tape.start_recording("take").unwrap(), "take");
-        tape.record("1304:2", &[0x43, 0x01, 80]);
-        tape.record("1304:2", &[0x42, 0x01]);
-        tape.record("1304:2", &[0x42, 0x02]);
+        // Recordings store microseconds; space the reports out so each gets its own timestamp,
+        // as real ones (~3.8 ms apart) do. Reports at the same instant would play in one step.
+        for data in [&[0x43, 0x01, 80][..], &[0x42, 0x01], &[0x42, 0x02]] {
+            tape.record("1304:2", data);
+            std::thread::sleep(Duration::from_millis(2));
+        }
         tape.stop_recording().unwrap();
         assert_eq!(tape.start_recording("take").unwrap(), "take (2)");
         tape.stop_recording().unwrap();
