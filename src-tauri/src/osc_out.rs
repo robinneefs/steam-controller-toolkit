@@ -293,11 +293,14 @@ impl OscOut {
     }
 
     /// Feed one state report from whatever the UI is showing (live input or a replay).
-    pub fn process(&mut self, s: &ControllerState, battery: Option<u8>) {
+    /// `watched`: the OSC tab is in view, so disabled destinations run too, for its meters and values.
+    pub fn process(&mut self, s: &ControllerState, battery: Option<u8>, watched: bool) {
         self.learn.process(s);
         let now = self.start.elapsed();
         for d in &mut self.dests {
-            // Disabled destinations still run, so the tab's meters and values work.
+            if !d.cfg.enabled && !watched {
+                continue;
+            }
             d.engine.process(s, battery, now, &mut self.buf);
             self.sockets.send(d, &mut self.buf);
         }
@@ -491,7 +494,7 @@ mod tests {
         let preset = Preset { stream: Stream { groups, ..Stream::default() }, ..Preset::default() };
         osc.set_destinations(vec![Destination { enabled: true, host: "127.0.0.1".into(), port, preset: preset.clone() }]);
         let mut s = ControllerState { left_stick: [32767, 0], ..Default::default() };
-        osc.process(&s, None);
+        osc.process(&s, None, false);
         let first = recv(&sock);
         assert!(matches!(first, OscPacket::Bundle(_)));
         let msgs = messages(first);
@@ -501,7 +504,7 @@ mod tests {
         // Without bundles, and only what changed: one plain message.
         osc.set_destinations(vec![Destination { enabled: true, host: "127.0.0.1".into(), port, preset: Preset { bundle: false, ..preset } }]);
         s.right_stick = [0, -32767];
-        osc.process(&s, None);
+        osc.process(&s, None, false);
         let msgs = messages(recv(&sock));
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].addr, "/sc/right_stick");
@@ -527,16 +530,30 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
         let s = ControllerState { buttons: sc_core::protocol::buttons::A, ..Default::default() };
-        osc.process(&s, None);
+        osc.process(&s, None, false);
         let held: Vec<_> = messages(recv(&sock)).into_iter().map(|m| (m.addr, m.args)).collect();
         assert!(held.contains(&("/input/Jump".into(), vec![OscType::Int(1)])));
         osc.set_destinations(vec![Destination { enabled: false, ..dest }]);
         let released: Vec<_> = messages(recv(&sock)).into_iter().map(|m| (m.addr, m.args)).collect();
         assert!(released.contains(&("/input/Jump".into(), vec![OscType::Int(0)])), "{released:?}");
-        osc.process(&s, None);
+        osc.process(&s, None, false);
         sock.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
         let mut buf = [0u8; 1024];
         assert!(sock.recv_from(&mut buf).is_err(), "sent while off");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A disabled destination does no work unless the OSC tab is in view (its values show there).
+    #[test]
+    fn disabled_runs_only_while_watched() {
+        let dir = temp_dir("watched");
+        let mut osc = OscOut::new(dir.clone());
+        osc.set_destinations(vec![Destination { enabled: false, ..Destination::default() }]);
+        let s = ControllerState { left_stick: [32767, 0], ..Default::default() };
+        osc.process(&s, None, false);
+        assert!(osc.status().destinations[0].values.is_empty());
+        osc.process(&s, None, true);
+        assert!(!osc.status().destinations[0].values.is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 

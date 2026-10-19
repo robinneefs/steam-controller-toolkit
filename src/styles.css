@@ -873,3 +873,15 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .about-grid p { margin: 0 0 10px; line-height: 1.55; }
 .about-grid p:last-child { margin-bottom: 0; }
 .credits { margin: 0; padding-left: 18px; line-height: 1.7; }
+
+/* Settings */
+.settings { height: 100%; overflow-y: auto; overflow-x: hidden; padding-right: 6px; scrollbar-gutter: stable; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-content: start; gap: 14px; }
+.setting { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; cursor: pointer; }
+.setting + .setting { border-top: 1px solid var(--line); }
+.setting input { margin-top: 3px; flex: none; }
+.setting b { display: block; font-weight: 600; }
+.setting .muted { display: block; margin-top: 3px; line-height: 1.45; }
+.setting-error { margin: 6px 0 0; }
+.bg-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bg-list b { display: inline-block; min-width: 76px; font-weight: 600; }
+.settings .tile > p { margin: 0; line-height: 1.5; }

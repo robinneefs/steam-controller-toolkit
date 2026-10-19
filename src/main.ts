@@ -9,13 +9,14 @@ import { MidiTab } from "./tabs/midi";
 import { OscTab } from "./tabs/osc";
 import { RawTab } from "./tabs/raw";
 import { RecorderTab } from "./tabs/recorder";
+import { SettingsTab } from "./tabs/settings";
 import { ICONS } from "./tabs/icons";
 import type { Tab, TabGroup } from "./tabs/tab";
 import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
 const recorder = new RecorderTab();
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new RawTab(), recorder, new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new RawTab(), recorder, new SettingsTab(), new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const navFoot = document.querySelector<HTMLElement>("#nav-foot")!;
@@ -42,6 +43,8 @@ function show(tab: Tab): void {
   document.querySelectorAll<HTMLElement>(".sidebar [data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab.id));
   tabTitle.textContent = tab.title;
   if (lastSnapshot) tab.update?.(lastSnapshot);
+  // The backend runs an output's engine while it is off only if its tab is in view (meters, Learn).
+  invoke("set_tab", { tab: tab.id }).catch(() => {});
 }
 
 // Sidebar: tabs listed under their group, About and the collapse button at the bottom.
@@ -297,7 +300,8 @@ getVersion()
 
 onSnapshot((snap) => {
   lastSnapshot = snap;
-  // Nothing is visible while the window is minimised or hidden; skip all drawing.
+  // Nothing is visible while the window is minimised or hidden; skip all drawing. (The backend
+  // also stops sending snapshots while minimised, which WebView2 doesn't report as hidden.)
   if (document.hidden) return;
   renderStatus(snap);
   // During playback the state is the recording's; there is no live controller to turn off.

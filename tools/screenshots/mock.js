@@ -46,6 +46,7 @@
     osc_destinations: () => structuredClone(data.osc.destinations),
     osc_list_presets: () => data.osc.presets,
     osc_load_preset: (args) => structuredClone(data.osc.builtin.find((p) => p.name === args.name)),
+    background_settings: () => ({ close_to_tray: true, autostart: true }),
   };
 
   window.__TAURI_INTERNALS__ = {

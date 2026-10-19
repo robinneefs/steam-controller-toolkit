@@ -22,6 +22,12 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
   - A live list of every address sent and its value; click to copy.
   - Losing the controller, or starting, stopping or seeking a replay, lets go of held buttons
     and mapped sticks and sends `/sc/connected 0`.
+- **Run in the background**: closing the window keeps the app running in the system tray, so
+  MIDI and OSC keep sending. The tray icon shows the controller, battery and outputs; click it to
+  open the window again, right-click to quit. In the tray the app uses about 30 MB of memory and
+  under 2% of one CPU core (the window took about 500 MB).
+- **Settings** tab: keep running in the tray when the window closes (on by default), and start
+  in the tray when you sign in.
 
 ### Changed
 
@@ -29,6 +35,12 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
   have room. It shows names from 1100 px wide and icons only below that (hover for the name);
   Collapse picks icons at any size; below 1100 px, Expand opens the sidebar over the tab. Dots show MIDI and OSC sending and the Recorder recording or replaying.
 - The window now opens at 1280 x 720 (was 1100 x 720).
+- A minimised window now costs almost nothing: about 3% of one CPU core, down from about 45%,
+  because the app stops updating it. MIDI and OSC also do no work while they're off, unless
+  their tab is open.
+- Starting the app again while it runs (say from the Start menu while it sits in the tray) opens
+  its window instead of a second copy.
+- Quitting lets go of held MIDI notes and OSC buttons.
 
 ## [0.2.1] - 2026-10-19
 

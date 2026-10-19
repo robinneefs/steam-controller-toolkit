@@ -281,7 +281,12 @@ impl MidiOut {
     }
 
     /// Feed one state report from whatever the UI is showing (live input or a replay).
-    pub fn process(&mut self, s: &ControllerState) {
+    /// Feed one state report. While the output is off the engine only runs if the MIDI tab is in
+    /// view (`watched`) or learning, for its meters and Learn; otherwise this does nothing.
+    pub fn process(&mut self, s: &ControllerState, watched: bool) {
+        if self.output == OutputChoice::Off && !watched && !self.engine.learning() {
+            return;
+        }
         let mut buf = std::mem::take(&mut self.buf);
         self.engine.process(s, &mut buf);
         // Without a port the engine still runs, so the meters and learn work.

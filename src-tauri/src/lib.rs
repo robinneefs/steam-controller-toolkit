@@ -10,7 +10,7 @@ use sc_core::protocol::{self, BatteryStatus, Haptic, Report};
 use sc_core::{Command, ControllerState, Hub, HubEvent};
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
 
 mod midi;
@@ -25,11 +25,13 @@ mod osc_out;
 mod outputs;
 mod shaping;
 mod tape;
+mod tray;
 use midi::Preset;
 use midi_out::{MidiOut, MidiPorts, MidiStatus, OutputChoice, PresetInfo};
 use osc_out::{Destination, OscOut, OscStatus};
 use outputs::{Outputs, SharedMidi, SharedOsc};
 use tape::{PlaybackAction, RecordingInfo, Tape, TapeStatus};
+use tray::{SharedSettings, SharedView, Tray, TrayLines};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
 const EMIT_INTERVAL: Duration = Duration::from_millis(16);
@@ -292,6 +294,9 @@ async fn osc_reveal_presets(app: AppHandle, osc: State<'_, SharedOsc>) -> Result
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Whether the tray icon could be made; without one, closing the window quits.
+struct TrayAvailable(bool);
+
 /// A [`Snapshot`] built up from reports, one for live input and one for a replayed recording.
 #[derive(Default)]
 struct Fold {
@@ -338,7 +343,7 @@ impl Fold {
     }
 }
 
-fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, outputs: Outputs) {
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, outputs: Outputs, view: SharedView, tray: Option<Tray>) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
@@ -347,9 +352,16 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
     let mut replay = Fold::default();
     let mut next_emit = Instant::now();
     let mut rate_window = Instant::now();
+    let mut tray_lines = TrayLines::default();
     // Outputs follow what the UI shows: live input, or the recording while one plays.
     let mut playing = false;
     loop {
+        // What the UI can see: output tabs in view, and whether a window shows at all. While it
+        // is minimised or closed to the tray, nobody sees the UI: send it nothing.
+        let (watched, visible) = {
+            let v = view.lock().unwrap();
+            (v.watched(), v.visible())
+        };
         // Wake up in time for the next replayed report.
         let wait = tape.lock().unwrap().next_due().map_or(EMIT_INTERVAL, |d| d.min(EMIT_INTERVAL));
         match rx.recv_timeout(wait) {
@@ -357,7 +369,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
                 let state = live.packet(&slot, &data);
                 tape.lock().unwrap().record(&slot, &data);
                 if let (Some(s), false) = (state, playing) {
-                    outputs.process(&s, live.snap.battery);
+                    outputs.process(&s, live.snap.battery, watched);
                 }
                 if live.snap.state.is_none() && !playing {
                     outputs.release_all();
@@ -390,18 +402,31 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
             if let Some(s) = replay.packet(slot, data)
                 && playing
             {
-                outputs.process(&s, replay.snap.battery);
+                outputs.process(&s, replay.snap.battery, watched);
             }
         });
         replay.snap.report_rate = deck.replay_rate();
         let now = Instant::now();
-        let status = (now >= next_emit).then(|| deck.status());
+        let status = (visible && now >= next_emit).then(|| deck.status());
         drop(deck);
         // Outside the tape lock: reconnecting to a port can take a moment.
         outputs.tick();
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
             rate_window = Instant::now();
+            if let Some(tray) = &tray {
+                let snap = &live.snap;
+                let lines = TrayLines::new(
+                    snap.state.and(snap.slot.as_deref()),
+                    snap.battery.map(|b| b.level),
+                    &outputs.midi.lock().unwrap().status(),
+                    &outputs.osc.lock().unwrap().status(),
+                );
+                if lines != tray_lines {
+                    tray.update(&lines);
+                    tray_lines = lines;
+                }
+            }
         }
         if let Some(status) = status {
             // Keep to the schedule instead of counting from now: an emit waits for the next report
@@ -421,7 +446,12 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // First: a second launch (say from the Start menu while we sit in the tray) opens this
+        // instance's window instead of starting another that would fight over the controller.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::open_window(app)))
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![tray::TRAY_ARG])))
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
             turn_off_controller,
             play_haptic,
@@ -452,6 +482,10 @@ pub fn run() {
             osc_save_preset,
             osc_delete_preset,
             osc_reveal_presets,
+            tray::set_tab,
+            tray::background_settings,
+            tray::set_close_to_tray,
+            tray::set_autostart,
         ])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
@@ -462,12 +496,39 @@ pub fn run() {
             app.manage(midi.clone());
             let osc: SharedOsc = Arc::new(Mutex::new(OscOut::new(app.path().app_data_dir()?.join("osc"))));
             app.manage(osc.clone());
+            let outputs = Outputs { midi, osc };
+            app.manage(outputs.clone());
+            let settings: SharedSettings = Arc::new(Mutex::new(tray::Settings::load(app.path().app_data_dir()?.join("settings.json"))));
+            app.manage(settings);
+            let view = SharedView::default();
+            app.manage(view.clone());
+            // Without a tray (say a Linux desktop without one) the app still runs, it just can't
+            // be reopened once closed; closing quits then (see the exit handler below).
+            let tray = Tray::create(app.handle()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
+            app.manage(TrayAvailable(tray.is_some()));
+            // Started with the system: stay in the tray.
+            if !std::env::args().any(|a| a == tray::TRAY_ARG) || tray.is_none() {
+                tray::open_window(app.handle());
+            }
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle, rx, tape, Outputs { midi, osc }));
+            thread::spawn(move || forward_events(handle, rx, tape, outputs, view, tray));
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| match event {
+            // The last window closed: keep running in the tray if that's the setting.
+            RunEvent::ExitRequested { code: None, api, .. }
+                if app.state::<TrayAvailable>().0 && app.state::<SharedSettings>().lock().unwrap().close_to_tray() =>
+            {
+                api.prevent_exit()
+            }
+            // Quitting: let go of held notes and buttons so nothing hangs in the DAW or app.
+            RunEvent::Exit => app.state::<Outputs>().release_all(),
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => tray::open_window(app),
+            _ => {}
+        });
 }
 
 #[cfg(test)]

@@ -15,11 +15,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 sc-core = { path = "../crates/sc-core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tauri-plugin-opener = "2"
+# Tray mode: a second launch opens the running app's window; start with the system, in the tray.
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
 midir = "0.11"
 rosc = "0.11"
 

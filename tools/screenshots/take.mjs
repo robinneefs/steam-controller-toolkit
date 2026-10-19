@@ -18,6 +18,7 @@ const SHOTS = {
   "osc-guide": { tab: "osc", frame: 245, guide: 1 },
   "raw-data": { tab: "raw", frame: 345 },
   recorder: { tab: "recorder", frame: 132, replay: 1 },
+  settings: { tab: "settings", frame: 125 },
   about: { tab: "about", frame: 125 },
 };
 

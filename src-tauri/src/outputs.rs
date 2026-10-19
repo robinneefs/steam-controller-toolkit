@@ -13,6 +13,14 @@ use crate::osc_out::OscOut;
 pub type SharedMidi = Arc<Mutex<MidiOut>>;
 pub type SharedOsc = Arc<Mutex<OscOut>>;
 
+/// Output tabs someone is looking at. An output that is off does no work per report, except
+/// while its tab is in view: the meters and Learn there run on the engine.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Watched {
+    pub midi: bool,
+    pub osc: bool,
+}
+
 #[derive(Clone)]
 pub struct Outputs {
     pub midi: SharedMidi,
@@ -20,9 +28,9 @@ pub struct Outputs {
 }
 
 impl Outputs {
-    pub fn process(&self, s: &ControllerState, battery: Option<BatteryStatus>) {
-        self.midi.lock().unwrap().process(s);
-        self.osc.lock().unwrap().process(s, battery.map(|b| b.level));
+    pub fn process(&self, s: &ControllerState, battery: Option<BatteryStatus>, watched: Watched) {
+        self.midi.lock().unwrap().process(s, watched.midi);
+        self.osc.lock().unwrap().process(s, battery.map(|b| b.level), watched.osc);
     }
 
     /// Let go of everything held (notes, buttons), e.g. when switching between live input and a

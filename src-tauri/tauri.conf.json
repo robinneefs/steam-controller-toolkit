@@ -12,6 +12,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "Steam Controller Toolkit",
         "width": 1280,
         "height": 720,

@@ -160,7 +160,13 @@ Record a session and play it back without a controller:
 - **Power button**: turns the controller off (click twice to confirm).
 - **Click any value to copy it**, or *Copy all* for a whole report as hex.
 - A warning appears while Steam is running (see [Requirements](#requirements)).
+- **Runs in the background**: close the window and the app stays in the system tray, so MIDI
+  and OSC keep sending while using about 30 MB of memory and under 2% of a CPU core. Click the
+  tray icon to open the window again, right-click it to quit. The **Settings** tab turns this
+  off, and can start the app in the tray when you sign in.
 - **About** tab with version, links and credits.
+
+![Settings tab: keep running in the tray, start when you sign in, and what runs in the background](docs/screenshots/settings.png)
 
 ![About tab: version, links, credits and licenses](docs/screenshots/about.png)
 
@@ -262,8 +268,8 @@ npm run probe -- --raw --seconds 10
 | Path | What it is |
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
-| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI and OSC |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, OSC, Raw data, Recorder and About tabs |
+| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI and OSC, tray icon |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, OSC, Raw data, Recorder, Settings and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |

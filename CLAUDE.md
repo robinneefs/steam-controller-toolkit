@@ -2,7 +2,7 @@
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
-effect), MIDI (controller as a MIDI controller), OSC (controller to any OSC app), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+effect), MIDI (controller as a MIDI controller), OSC (controller to any OSC app), Raw data (device facts and report bytes), Recorder (record and replay reports), Settings (background/tray) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, rounded tiles; the tabs are in a
 left sidebar (`mockups/sidebar.html`, Panel style).
 
@@ -84,6 +84,16 @@ without the user asking: a `v*` tag makes CI draft a release.
   service restart (restarting `midisrv` needs admin; a stuck one must be killed). Microsoft's
   go-live terms: never on Windows below 25H2, keep up with previews, tell users it's a preview,
   remove our copy once Windows has it.
+- **Background / tray** (`src-tauri/src/tray.rs`): closing the window destroys it (the webview is
+  ~470 MB and, while drawing, most of the CPU) and the app stays in the tray, unless Settings turns
+  that off (`<app data>/settings.json`). The window is made in code (`"create": false`), so
+  `--tray` (what autostart passes) starts without it; single-instance makes a second launch open
+  it. `View` tracks whether a window is visible (minimised counts as hidden: WebView2 doesn't set
+  `document.hidden` then) and its tab (`set_tab` from `main.ts`): `forward_events` emits nothing
+  while hidden, and an output that is off skips its engine unless its tab is in view
+  (`outputs::Watched`; meters and Learn need it). Measured on Windows: tray ~1.6% of a core and
+  30 MB; minimised ~3%; open on the Visualizer ~40% (the 3D view redraws on gyro noise).
+  New outputs must follow the same rule: no per-report work while off and unwatched.
 - **`src/`**: `main.ts` builds the sidebar from the `tabs` array (grouped by `group`); each tab implements `Tab` in
   `src/tabs/tab.ts`. `src/controller.ts` mirrors the Rust types and must be kept in sync with
   `crates/sc-core/src/protocol.rs` and `Snapshot` in `src-tauri/src/lib.rs`.
