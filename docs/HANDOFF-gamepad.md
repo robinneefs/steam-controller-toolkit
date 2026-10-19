@@ -1,7 +1,8 @@
 # Handoff: Keyboard & mouse and Gamepad outputs
 
-Status as of 2026-10-19. Nothing is committed (main still ends at 65a1411, unpushed). Don't commit
-or push without asking the user. Read `CLAUDE.md` first. Delete this file once the work is done.
+Status as of 2026-10-19. The engine and backends are in commit 3a56280 (work in progress); step 1
+below (`play_out.rs` and its wiring) is done but uncommitted. Don't commit or push without asking
+the user. Read `CLAUDE.md` first. Delete this file once the work is done.
 
 ## What the user asked for
 
@@ -96,7 +97,23 @@ Linux uses uinput. macOS is out of scope (shows "not available").
   - No rumble yet.
   - Type-checked for `x86_64-unknown-linux-gnu` in a scratch crate (the target is now installed
     via rustup). Never run on Linux.
-- `lib.rs`: modules registered only. **Nothing is wired up yet** (dead-code warnings are expected).
+- `src-tauri/src/play_out.rs` (`PlayOut`, step 1): in `Outputs` as `play`, wired into
+  `forward_events`, `Snapshot.play` (`PlayStatus`), the tray (two lines), `Watched`
+  (`keymouse`/`gamepad`, tab ids "keymouse" and "gamepad"), and the 13 `play_*` commands.
+  6 tests pass (mode logic, auto switch, preview, config round trip, preset store); the whole lib
+  has 54 passing tests on Linux. Not type-checked for Windows (from Linux, hidapi's C build needs
+  Windows headers); the only Windows-only call it makes is `vigem::install`.
+  - Config `play/config.json` = `Config {keymouse {enabled, desktop, game}, gamepad {enabled,
+    layout}, auto_switch}`; defaults: both off, Desktop + "Shooter (WASD + mouse)", "Standard",
+    auto switch on. `play_setup` returns it flattened plus `mode`.
+  - `play_set_keymouse(config)` / `play_set_gamepad(config)` take the whole section (the tabs
+    send it after every edit, like OSC); `play_load_preset(kind, name, builtin)` only returns the
+    layout. `kind` is "keymouse" | "gamepad"; `play_set_preview(slot)` takes "desktop" | "game" |
+    "pad" | null.
+  - Haptics: `take_haptics()` (switch click) and `rumble()`; `forward_events` sends both to the
+    live slot via a clone of the `Hub`, never during a replay (rumble goes to 0 then).
+  - The keyboard & mouse device opens lazily on the first event and closes when no layout plays.
+  - Preview speeds (`mouse` px/s, `scroll` notches/s) are smoothed in `Speed`.
 
 ## Agreed design for the rest
 
@@ -205,9 +222,9 @@ Icons go in `icons.ts`. The tabs follow the MIDI/OSC look (`docs/screenshots/mid
 
 ## Remaining steps
 
-1. `play_out.rs` + `Outputs`/`Watched` (add keymouse/gamepad to `View::watched` in `tray.rs`) +
+1. ~~`play_out.rs` + `Outputs`/`Watched` (add keymouse/gamepad to `View::watched` in `tray.rs`) +
    `forward_events` (rumble and switch haptics need `app.state::<Hub>()` and the live slot) +
-   commands + Snapshot. Unit-test what you can: mode logic, preset store, config round trip.
+   commands + Snapshot. Unit-test what you can: mode logic, preset store, config round trip.~~ Done.
 2. Frontend: both tabs, `controller.ts` types, `main.ts` registration and dots, Settings list.
 3. Linux packaging:
    - Add `src-tauri/linux/60-steam-controller-toolkit.rules` with:

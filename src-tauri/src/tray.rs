@@ -17,6 +17,8 @@ use tauri_plugin_autostart::ManagerExt;
 use crate::midi_out::{MidiStatus, OutputChoice};
 use crate::osc_out::OscStatus;
 use crate::outputs::Watched;
+use crate::play_out::{PlayStatus, Slot};
+use crate::devices::PadSupport;
 
 /// Command-line flag for starting in the tray without a window; autostart passes it.
 pub const TRAY_ARG: &str = "--tray";
@@ -39,7 +41,7 @@ impl View {
 
     pub fn watched(&self) -> Watched {
         let on = |id: &str| self.visible && self.tab == id;
-        Watched { midi: on("midi"), osc: on("osc") }
+        Watched { midi: on("midi"), osc: on("osc"), keymouse: on("keymouse"), gamepad: on("gamepad") }
     }
 }
 
@@ -145,24 +147,34 @@ pub fn set_autostart(on: bool, app: AppHandle) -> Result<(), String> {
     if on { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())
 }
 
-/// The tray icon's menu: three status lines (not clickable), Open and Quit.
+/// The tray icon's menu: five status lines (not clickable), Open and Quit.
 #[derive(Clone)]
 pub struct Tray {
     controller: MenuItem<Wry>,
     midi: MenuItem<Wry>,
     osc: MenuItem<Wry>,
+    keymouse: MenuItem<Wry>,
+    gamepad: MenuItem<Wry>,
 }
 
 impl Tray {
     pub fn create(app: &AppHandle) -> tauri::Result<Tray> {
         let status = |id: &str, text: &str| MenuItem::with_id(app, id, text, false, None::<&str>);
-        let tray = Tray { controller: status("controller", "No controller")?, midi: status("midi", "MIDI: off")?, osc: status("osc", "OSC: off")? };
+        let tray = Tray {
+            controller: status("controller", "No controller")?,
+            midi: status("midi", "MIDI: off")?,
+            osc: status("osc", "OSC: off")?,
+            keymouse: status("keymouse", "Keyboard & mouse: off")?,
+            gamepad: status("gamepad", "Gamepad: off")?,
+        };
         let menu = Menu::with_items(
             app,
             &[
                 &tray.controller,
                 &tray.midi,
                 &tray.osc,
+                &tray.keymouse,
+                &tray.gamepad,
                 &PredefinedMenuItem::separator(app)?,
                 &MenuItem::with_id(app, "open", "Open Steam Controller Toolkit", true, None::<&str>)?,
                 &MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?,
@@ -192,7 +204,14 @@ impl Tray {
 
     /// Called about once a second from `forward_events`; the menu only changes when a line does.
     pub fn update(&self, lines: &TrayLines) {
-        for (item, text) in [(&self.controller, &lines.controller), (&self.midi, &lines.midi), (&self.osc, &lines.osc)] {
+        let items = [
+            (&self.controller, &lines.controller),
+            (&self.midi, &lines.midi),
+            (&self.osc, &lines.osc),
+            (&self.keymouse, &lines.keymouse),
+            (&self.gamepad, &lines.gamepad),
+        ];
+        for (item, text) in items {
             if item.text().ok().as_ref() != Some(text) {
                 let _ = item.set_text(text);
             }
@@ -206,10 +225,12 @@ pub struct TrayLines {
     pub controller: String,
     pub midi: String,
     pub osc: String,
+    pub keymouse: String,
+    pub gamepad: String,
 }
 
 impl TrayLines {
-    pub fn new(slot: Option<&str>, battery: Option<u8>, midi: &MidiStatus, osc: &OscStatus) -> Self {
+    pub fn new(slot: Option<&str>, battery: Option<u8>, midi: &MidiStatus, osc: &OscStatus, play: &PlayStatus) -> Self {
         let controller = match slot {
             None => "No controller".to_string(),
             Some(slot) => {
@@ -230,7 +251,26 @@ impl TrayLines {
             [one] => format!("OSC: sending to {one}"),
             many => format!("OSC: sending to {} destinations", many.len()),
         };
-        TrayLines { controller, midi, osc }
+        let keymouse = match play.active {
+            _ if !play.keymouse.enabled => "Keyboard & mouse: off",
+            _ if play.keymouse.error.is_some() => "Keyboard & mouse: blocked",
+            Some(Slot::Desktop) => "Keyboard & mouse: Desktop layout",
+            Some(Slot::Game) => "Keyboard & mouse: Game layout",
+            // Both on, in Game mode: the gamepad plays.
+            _ => "Keyboard & mouse: on, gamepad in play",
+        }
+        .to_string();
+        let pad = &play.gamepad;
+        let gamepad = match (&pad.support, pad.player) {
+            _ if !pad.enabled => "Gamepad: off".to_string(),
+            (Some(PadSupport::Missing { .. }), _) => "Gamepad: driver missing".to_string(),
+            (Some(PadSupport::Unsupported), _) => "Gamepad: not available".to_string(),
+            _ if !pad.connected && pad.error.is_some() => "Gamepad: not connected".to_string(),
+            _ if !pad.connected => "Gamepad: connecting…".to_string(),
+            (_, Some(n)) => format!("Gamepad: on · player {n}"),
+            _ => "Gamepad: on".to_string(),
+        };
+        TrayLines { controller, midi, osc, keymouse, gamepad }
     }
 }
 
@@ -263,7 +303,9 @@ mod tests {
     #[test]
     fn view_watches_only_the_visible_tab() {
         let mut v = View { visible: true, tab: "midi".into() };
-        assert_eq!(v.watched(), Watched { midi: true, osc: false });
+        assert_eq!(v.watched(), Watched { midi: true, ..Default::default() });
+        v.tab = "gamepad".into();
+        assert_eq!(v.watched(), Watched { gamepad: true, ..Default::default() });
         v.visible = false;
         assert_eq!(v.watched(), Watched::default());
     }

@@ -27,6 +27,7 @@ mod midi_win;
 mod osc;
 mod osc_out;
 mod outputs;
+mod play_out;
 mod shaping;
 mod tape;
 mod tray;
@@ -37,7 +38,8 @@ mod vigem;
 use midi::Preset;
 use midi_out::{MidiOut, MidiPorts, MidiStatus, OutputChoice, PresetInfo};
 use osc_out::{Destination, OscOut, OscStatus};
-use outputs::{Outputs, SharedMidi, SharedOsc};
+use outputs::{Outputs, SharedMidi, SharedOsc, SharedPlay};
+use play_out::{GamepadConfig, KeyMouseConfig, Mode, PlayOut, PlayStatus, PresetKind, Slot};
 use tape::{PlaybackAction, RecordingInfo, Tape, TapeStatus};
 use tray::{SharedSettings, SharedView, Tray, TrayLines};
 
@@ -66,6 +68,8 @@ struct Snapshot {
     midi: MidiStatus,
     /// OSC output state; like MIDI, it follows whatever this snapshot shows.
     osc: OscStatus,
+    /// Keyboard & mouse and Gamepad output state; they follow this snapshot too.
+    play: PlayStatus,
 }
 
 const STEAM_PROCESS: &str = if cfg!(windows) {
@@ -302,6 +306,89 @@ async fn osc_reveal_presets(app: AppHandle, osc: State<'_, SharedOsc>) -> Result
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The layouts and settings the Keyboard & mouse and Gamepad tabs start from.
+#[derive(Serialize)]
+struct PlaySetup {
+    #[serde(flatten)]
+    config: play_out::Config,
+    mode: Mode,
+}
+
+#[tauri::command]
+fn play_setup(play: State<'_, SharedPlay>) -> PlaySetup {
+    let play = play.lock().unwrap();
+    PlaySetup { config: play.config().clone(), mode: play.mode() }
+}
+
+/// Keyboard & mouse on/off and its two layouts (the tab sends them after every edit).
+#[tauri::command]
+fn play_set_keymouse(config: KeyMouseConfig, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_keymouse(config);
+}
+
+/// Gamepad on/off and its layout (the tab sends them after every edit).
+#[tauri::command]
+fn play_set_gamepad(config: GamepadConfig, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_gamepad(config);
+}
+
+#[tauri::command]
+fn play_set_auto_switch(on: bool, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_auto_switch(on);
+}
+
+#[tauri::command]
+fn play_set_mode(mode: Mode, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_mode(mode);
+}
+
+/// Which layout the tab in view shows, for its live view.
+#[tauri::command]
+fn play_set_preview(slot: Option<Slot>, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_preview(slot);
+}
+
+#[tauri::command]
+async fn play_list_presets(kind: PresetKind, play: State<'_, SharedPlay>) -> Result<Vec<play_out::PresetInfo>, String> {
+    Ok(play.lock().unwrap().presets(kind).list())
+}
+
+/// A layout for the editor (it plays once the tab sends it with the rest).
+#[tauri::command]
+async fn play_load_preset(kind: PresetKind, name: String, builtin: bool, play: State<'_, SharedPlay>) -> Result<layout::Layout, String> {
+    play.lock().unwrap().presets(kind).load(&name, builtin)
+}
+
+#[tauri::command]
+async fn play_save_preset(kind: PresetKind, name: String, layout: layout::Layout, play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().presets(kind).save(&name, layout)
+}
+
+#[tauri::command]
+async fn play_delete_preset(kind: PresetKind, name: String, play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().presets(kind).delete(&name)
+}
+
+/// Open the saved layouts folder of `kind` in the file manager.
+#[tauri::command]
+async fn play_reveal_presets(kind: PresetKind, app: AppHandle, play: State<'_, SharedPlay>) -> Result<(), String> {
+    let dir = play.lock().unwrap().presets(kind).folder()?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Run the ViGEmBus installer (Windows asks for administrator permission); the snapshot says
+/// when it is done.
+#[tauri::command]
+fn play_install_driver(play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().install_driver()
+}
+
+/// Look again whether the gamepad driver is there (the Gamepad tab asks when it opens).
+#[tauri::command]
+fn play_check_driver(play: State<'_, SharedPlay>) {
+    play.lock().unwrap().check_driver();
+}
+
 /// Whether the tray icon could be made; without one, closing the window quits.
 struct TrayAvailable(bool);
 
@@ -351,7 +438,7 @@ impl Fold {
     }
 }
 
-fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, outputs: Outputs, view: SharedView, tray: Option<Tray>) {
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, hub: Hub, tape: SharedTape, outputs: Outputs, view: SharedView, tray: Option<Tray>) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
@@ -363,6 +450,8 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
     let mut tray_lines = TrayLines::default();
     // Outputs follow what the UI shows: live input, or the recording while one plays.
     let mut playing = false;
+    // The rumble last sent to the live controller for the virtual pad (large, small motor).
+    let mut rumble_sent = (0u8, 0u8);
     loop {
         // What the UI can see: output tabs in view, and whether a window shows at all. While it
         // is minimised or closed to the tray, nobody sees the UI: send it nothing.
@@ -419,6 +508,28 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         drop(deck);
         // Outside the tape lock: reconnecting to a port can take a moment.
         outputs.tick();
+        // The mode switch click and the game's rumble go to the live controller, not during a replay.
+        let (haptics, rumble) = {
+            let mut play = outputs.play.lock().unwrap();
+            (play.take_haptics(), if playing { (0, 0) } else { play.rumble() })
+        };
+        match live.snap.state.and(live.snap.slot.as_deref()) {
+            Some(slot) => {
+                let send = |haptic| {
+                    let (reply, _) = mpsc::channel();
+                    let _ = hub.send(slot, Command::Haptic { haptic, reply });
+                };
+                if !playing {
+                    haptics.into_iter().for_each(send);
+                }
+                if rumble != rumble_sent {
+                    send(Haptic::Rumble { left: rumble.0 as u16 * 257, right: rumble.1 as u16 * 257 });
+                    rumble_sent = rumble;
+                }
+            }
+            // The hub stops a rumble with its controller; send it again once one is back.
+            None => rumble_sent = (0, 0),
+        }
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
             rate_window = Instant::now();
@@ -429,6 +540,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
                     snap.battery.map(|b| b.level),
                     &outputs.midi.lock().unwrap().status(),
                     &outputs.osc.lock().unwrap().status(),
+                    &outputs.play.lock().unwrap().status(),
                 );
                 if lines != tray_lines {
                     tray.update(&lines);
@@ -446,6 +558,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
             snap.tape = status;
             snap.midi = outputs.midi.lock().unwrap().status();
             snap.osc = outputs.osc.lock().unwrap().status();
+            snap.play = outputs.play.lock().unwrap().status();
             let _ = app.emit("controller", &*snap);
         }
     }
@@ -490,6 +603,19 @@ pub fn run() {
             osc_save_preset,
             osc_delete_preset,
             osc_reveal_presets,
+            play_setup,
+            play_set_keymouse,
+            play_set_gamepad,
+            play_set_auto_switch,
+            play_set_mode,
+            play_set_preview,
+            play_list_presets,
+            play_load_preset,
+            play_save_preset,
+            play_delete_preset,
+            play_reveal_presets,
+            play_install_driver,
+            play_check_driver,
             tray::set_tab,
             tray::background_settings,
             tray::set_close_to_tray,
@@ -497,14 +623,17 @@ pub fn run() {
         ])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
-            app.manage(hub::spawn(tx, HubOptions::default()));
+            let hub = hub::spawn(tx, HubOptions::default());
+            app.manage(hub.clone());
             let tape: SharedTape = Arc::new(Mutex::new(Tape::new(app.path().app_data_dir()?.join("recordings"))));
             app.manage(tape.clone());
             let midi: SharedMidi = Arc::new(Mutex::new(MidiOut::new(app.path().app_data_dir()?.join("midi"))));
             app.manage(midi.clone());
             let osc: SharedOsc = Arc::new(Mutex::new(OscOut::new(app.path().app_data_dir()?.join("osc"))));
             app.manage(osc.clone());
-            let outputs = Outputs { midi, osc };
+            let play: SharedPlay = Arc::new(Mutex::new(PlayOut::new(app.path().app_data_dir()?.join("play"))));
+            app.manage(play.clone());
+            let outputs = Outputs { midi, osc, play };
             app.manage(outputs.clone());
             let settings: SharedSettings = Arc::new(Mutex::new(tray::Settings::load(app.path().app_data_dir()?.join("settings.json"))));
             app.manage(settings);
@@ -519,7 +648,7 @@ pub fn run() {
                 tray::open_window(app.handle());
             }
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle, rx, tape, outputs, view, tray));
+            thread::spawn(move || forward_events(handle, rx, hub, tape, outputs, view, tray));
             Ok(())
         })
         .build(tauri::generate_context!())

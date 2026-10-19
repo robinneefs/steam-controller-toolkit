@@ -28,6 +28,7 @@ pub enum PadSupport {
     /// The driver (Windows) or access to /dev/uinput (Linux) is missing; the Gamepad tab explains.
     Missing { detail: String },
     /// Not on this system at all.
+    #[cfg_attr(any(windows, target_os = "linux"), allow(dead_code))]
     Unsupported,
 }
 
