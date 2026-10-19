@@ -20,9 +20,15 @@ mod midi2_bindings;
 mod midi_out;
 #[cfg(windows)]
 mod midi_win;
+mod osc;
+mod osc_out;
+mod outputs;
+mod shaping;
 mod tape;
 use midi::Preset;
 use midi_out::{MidiOut, MidiPorts, MidiStatus, OutputChoice, PresetInfo};
+use osc_out::{Destination, OscOut, OscStatus};
+use outputs::{Outputs, SharedMidi, SharedOsc};
 use tape::{PlaybackAction, RecordingInfo, Tape, TapeStatus};
 
 /// How often the UI gets a fresh snapshot (~60 fps). The controller itself reports at ~250 Hz.
@@ -48,6 +54,8 @@ struct Snapshot {
     tape: TapeStatus,
     /// MIDI output state; MIDI follows whatever this snapshot shows (live input or a replay).
     midi: MidiStatus,
+    /// OSC output state; like MIDI, it follows whatever this snapshot shows.
+    osc: OscStatus,
 }
 
 const STEAM_PROCESS: &str = if cfg!(windows) {
@@ -162,8 +170,6 @@ async fn import_recordings(paths: Vec<PathBuf>, tape: State<'_, SharedTape>) -> 
     paths.iter().map(|p| tape.import(p)).collect()
 }
 
-type SharedMidi = Arc<Mutex<MidiOut>>;
-
 /// The preset being played and where MIDI goes, for the MIDI tab to start from.
 #[derive(Serialize)]
 struct MidiSetup {
@@ -239,6 +245,53 @@ async fn midi_reveal_presets(app: AppHandle, midi: State<'_, SharedMidi>) -> Res
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Where OSC goes: every destination with its preset, for the OSC tab to start from.
+#[tauri::command]
+fn osc_destinations(osc: State<'_, SharedOsc>) -> Vec<Destination> {
+    osc.lock().unwrap().destinations()
+}
+
+/// Replace the destinations (the OSC tab sends the whole list after every edit).
+#[tauri::command]
+fn osc_set_destinations(destinations: Vec<Destination>, osc: State<'_, SharedOsc>) {
+    osc.lock().unwrap().set_destinations(destinations);
+}
+
+/// Start (or with `on` false, stop) waiting for an input to move; the snapshot reports it.
+#[tauri::command]
+fn osc_learn(on: bool, osc: State<'_, SharedOsc>) {
+    let mut osc = osc.lock().unwrap();
+    if on { osc.start_learn() } else { osc.cancel_learn() }
+}
+
+#[tauri::command]
+async fn osc_list_presets(osc: State<'_, SharedOsc>) -> Result<Vec<osc_out::PresetInfo>, String> {
+    Ok(osc.lock().unwrap().list_presets())
+}
+
+/// A preset for the editor to put in a destination (it applies once the tab sends the list).
+#[tauri::command]
+async fn osc_load_preset(name: String, builtin: bool, osc: State<'_, SharedOsc>) -> Result<osc::Preset, String> {
+    osc.lock().unwrap().load_preset(&name, builtin)
+}
+
+#[tauri::command]
+async fn osc_save_preset(name: String, preset: osc::Preset, osc: State<'_, SharedOsc>) -> Result<(), String> {
+    osc.lock().unwrap().save_preset(&name, preset)
+}
+
+#[tauri::command]
+async fn osc_delete_preset(name: String, osc: State<'_, SharedOsc>) -> Result<(), String> {
+    osc.lock().unwrap().delete_preset(&name)
+}
+
+/// Open the saved OSC presets folder in the file manager.
+#[tauri::command]
+async fn osc_reveal_presets(app: AppHandle, osc: State<'_, SharedOsc>) -> Result<(), String> {
+    let dir = osc.lock().unwrap().presets_folder()?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// A [`Snapshot`] built up from reports, one for live input and one for a replayed recording.
 #[derive(Default)]
 struct Fold {
@@ -285,7 +338,7 @@ impl Fold {
     }
 }
 
-fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, midi: SharedMidi) {
+fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape, outputs: Outputs) {
     let steam_running = Arc::new(AtomicBool::new(false));
     let flag = steam_running.clone();
     thread::spawn(move || watch_steam(flag));
@@ -294,7 +347,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
     let mut replay = Fold::default();
     let mut next_emit = Instant::now();
     let mut rate_window = Instant::now();
-    // MIDI follows what the UI shows: live input, or the recording while one plays.
+    // Outputs follow what the UI shows: live input, or the recording while one plays.
     let mut playing = false;
     loop {
         // Wake up in time for the next replayed report.
@@ -304,16 +357,16 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
                 let state = live.packet(&slot, &data);
                 tape.lock().unwrap().record(&slot, &data);
                 if let (Some(s), false) = (state, playing) {
-                    midi.lock().unwrap().process(&s);
+                    outputs.process(&s, live.snap.battery);
                 }
                 if live.snap.state.is_none() && !playing {
-                    midi.lock().unwrap().release_all();
+                    outputs.release_all();
                 }
             }
             Ok(HubEvent::Closed { slot, .. }) => {
                 live.closed(&slot);
                 if live.snap.state.is_none() && !playing {
-                    midi.lock().unwrap().release_all();
+                    outputs.release_all();
                 }
             }
             Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -322,8 +375,8 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         let mut deck = tape.lock().unwrap();
         if deck.take_reset() {
             replay = Fold::default();
-            // A new recording or a seek: notes held at the old position would hang.
-            midi.lock().unwrap().release_all();
+            // A new recording or a seek: notes and buttons held at the old position would hang.
+            outputs.release_all();
             if let Some((slot, data)) = deck.first_battery() {
                 replay.packet(slot, data);
             }
@@ -331,13 +384,13 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         let now_playing = deck.playing();
         if now_playing != playing {
             playing = now_playing;
-            midi.lock().unwrap().release_all();
+            outputs.release_all();
         }
         deck.replay(|slot, data| {
             if let Some(s) = replay.packet(slot, data)
                 && playing
             {
-                midi.lock().unwrap().process(&s);
+                outputs.process(&s, replay.snap.battery);
             }
         });
         replay.snap.report_rate = deck.replay_rate();
@@ -345,7 +398,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
         let status = (now >= next_emit).then(|| deck.status());
         drop(deck);
         // Outside the tape lock: reconnecting to a port can take a moment.
-        midi.lock().unwrap().tick();
+        outputs.tick();
         if rate_window.elapsed() >= Duration::from_secs(1) {
             live.update_rate();
             rate_window = Instant::now();
@@ -358,7 +411,8 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, tape: SharedTape
             let snap = if playing { &mut replay.snap } else { &mut live.snap };
             snap.steam_running = steam_running.load(Ordering::Relaxed);
             snap.tape = status;
-            snap.midi = midi.lock().unwrap().status();
+            snap.midi = outputs.midi.lock().unwrap().status();
+            snap.osc = outputs.osc.lock().unwrap().status();
             let _ = app.emit("controller", &*snap);
         }
     }
@@ -390,6 +444,14 @@ pub fn run() {
             midi_save_preset,
             midi_delete_preset,
             midi_reveal_presets,
+            osc_destinations,
+            osc_set_destinations,
+            osc_learn,
+            osc_list_presets,
+            osc_load_preset,
+            osc_save_preset,
+            osc_delete_preset,
+            osc_reveal_presets,
         ])
         .setup(|app| {
             let (tx, rx) = mpsc::channel();
@@ -398,8 +460,10 @@ pub fn run() {
             app.manage(tape.clone());
             let midi: SharedMidi = Arc::new(Mutex::new(MidiOut::new(app.path().app_data_dir()?.join("midi"))));
             app.manage(midi.clone());
+            let osc: SharedOsc = Arc::new(Mutex::new(OscOut::new(app.path().app_data_dir()?.join("osc"))));
+            app.manage(osc.clone());
             let handle = app.handle().clone();
-            thread::spawn(move || forward_events(handle, rx, tape, midi));
+            thread::spawn(move || forward_events(handle, rx, tape, Outputs { midi, osc }));
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -411,9 +475,9 @@ mod screenshot_data {
     use super::*;
     use std::collections::VecDeque;
 
-    /// Replays a recording through the same folds and MIDI engine as the app and writes the
-    /// snapshots the UI would get (60 per second), plus the MIDI preset, as JSON for the README
-    /// screenshots (tools/screenshots):
+    /// Replays a recording through the same folds, MIDI and OSC engines as the app and writes the
+    /// snapshots the UI would get (60 per second), plus the MIDI preset and OSC destinations, as
+    /// JSON for the README screenshots (tools/screenshots):
     /// `SC_RECORDING=<file.screc> SC_SNAPSHOTS=<out.json> cargo test -p steam-controller-app --lib snapshots -- --ignored`
     #[test]
     #[ignore]
@@ -426,6 +490,17 @@ mod screenshot_data {
         let preset = midi::Preset { right_pad: midi::builtin_presets()[1].right_pad, ..Default::default() };
         let mut engine = midi::Engine::new(preset.clone());
         let (mut msgs, mut log, mut sent) = (Vec::new(), VecDeque::new(), 0u64);
+        // OSC: the stream to TouchDesigner on this PC, Resolume on another, VRChat switched off.
+        let osc_preset = |name: &str| osc::builtin_presets().into_iter().find(|p| p.name == name).unwrap();
+        let dests = vec![
+            Destination { enabled: true, host: "127.0.0.1".into(), port: 10000, preset: osc_preset("TouchDesigner") },
+            Destination { enabled: true, host: "192.168.1.42".into(), port: 7000, preset: osc_preset("Resolume Arena / Avenue") },
+            Destination { enabled: false, host: "127.0.0.1".into(), port: 9000, preset: osc_preset("VRChat") },
+        ];
+        let mut osc_engines: Vec<osc::Engine> = dests.iter().map(|d| osc::Engine::new(d.preset.clone())).collect();
+        // When each destination sent each message, for its msg/s.
+        let mut osc_sent: Vec<VecDeque<Duration>> = dests.iter().map(|_| VecDeque::new()).collect();
+        let mut osc_msgs = Vec::new();
         let mut states: VecDeque<Duration> = VecDeque::new();
         let mut frames = Vec::new();
         let mut next = Duration::ZERO;
@@ -444,12 +519,36 @@ mod screenshot_data {
                     log: log.iter().cloned().collect(),
                     ..Default::default()
                 };
+                fold.snap.osc = OscStatus {
+                    destinations: dests
+                        .iter()
+                        .zip(&osc_engines)
+                        .zip(&mut osc_sent)
+                        .map(|((d, e), times)| {
+                            while times.front().is_some_and(|t| next.saturating_sub(*t) > Duration::from_secs(1)) {
+                                times.pop_front();
+                            }
+                            osc_out::DestinationStatus {
+                                address: d.enabled.then(|| format!("{}:{}", d.host, d.port)),
+                                rate: if d.enabled { times.len() as u32 } else { 0 },
+                                levels: e.levels(),
+                                values: e.values(),
+                                ..Default::default()
+                            }
+                        })
+                        .collect(),
+                    ..Default::default()
+                };
                 frames.push(fold.snap.clone());
                 next += EMIT_INTERVAL;
             }
             if let Some(s) = fold.packet(&p.slot, &p.data) {
                 states.push_back(p.at);
                 engine.process(&s, &mut msgs);
+                for (i, e) in osc_engines.iter_mut().enumerate() {
+                    e.process(&s, fold.snap.battery.map(|b| b.level), p.at, &mut osc_msgs);
+                    osc_sent[i].extend(osc_msgs.drain(..).map(|_| p.at));
+                }
                 for m in msgs.drain(..) {
                     sent += 1;
                     log.push_back((sent, m.as_slice().to_vec()));
@@ -459,7 +558,15 @@ mod screenshot_data {
                 }
             }
         }
-        let json = serde_json::json!({ "preset": preset, "frames": frames });
+        let osc_presets: Vec<_> = osc::builtin_presets()
+            .into_iter()
+            .map(|p| serde_json::json!({ "name": p.name, "builtin": true, "port": p.port }))
+            .collect();
+        let json = serde_json::json!({
+            "preset": preset,
+            "osc": { "destinations": dests, "presets": osc_presets, "builtin": osc::builtin_presets() },
+            "frames": frames,
+        });
         std::fs::write(output, json.to_string()).unwrap();
         println!("{} frames", frames.len());
     }

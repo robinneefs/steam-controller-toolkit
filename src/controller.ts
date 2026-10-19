@@ -48,6 +48,8 @@ export interface Snapshot {
   tape: TapeStatus;
   /** MIDI output state; MIDI follows whatever this snapshot shows (live input or a replay). */
   midi: MidiStatus;
+  /** OSC output state; like MIDI, it follows whatever this snapshot shows. */
+  osc: OscStatus;
 }
 
 /** Mirrors `OutputChoice` in src-tauri/src/midi_out.rs. */
@@ -118,6 +120,85 @@ export interface MidiPreset {
   mappings: MidiMapping[];
   left_pad: PadGrid;
   right_pad: PadGrid;
+}
+
+/** One OSC argument; mirrors `Arg` in src-tauri/src/osc.rs. */
+export type OscArg = { int: number } | { float: number } | { bool: boolean } | { string: string };
+
+/** The types below mirror src-tauri/src/osc.rs (presets) and osc_out.rs (destinations, status). */
+export interface OscGroups {
+  triggers: boolean;
+  sticks: boolean;
+  pads: boolean;
+  buttons: boolean;
+  touch: boolean;
+  tilt: boolean;
+  gyro: boolean;
+  accel: boolean;
+  quat: boolean;
+  status: boolean;
+}
+
+export interface OscStream {
+  enabled: boolean;
+  prefix: string;
+  split: boolean;
+  groups: OscGroups;
+}
+
+export interface OscMapping {
+  enabled: boolean;
+  /** An axis name (see `SOURCES` in tabs/sources.ts) or `button:<name>`. */
+  source: string;
+  range: [number, number];
+  invert: boolean;
+  deadzone: number;
+  curve: number;
+  smoothing: number;
+  toggle: boolean;
+  hold: string | null;
+  address: string;
+  /** Sent before the value. */
+  args: OscArg[];
+  value: "float" | "int" | "bool";
+  out: [number, number];
+  mode: "continuous" | "button" | "trigger";
+}
+
+export interface OscPreset {
+  name: string;
+  /** The app's default port; picking the preset fills it in. */
+  port: number | null;
+  stream: OscStream;
+  mappings: OscMapping[];
+  /** Most messages per second for axes; 265 sends every report. */
+  rate: number;
+  bundle: boolean;
+}
+
+export interface OscDestination {
+  enabled: boolean;
+  host: string;
+  port: number;
+  preset: OscPreset;
+}
+
+export interface OscDestinationStatus {
+  /** Where packets go, once the host is known (and the destination is on). */
+  address: string | null;
+  resolving: boolean;
+  error: string | null;
+  /** Messages sent over the last second. */
+  rate: number;
+  levels: (number | null)[];
+  /** Every address with what it last carried. */
+  values: [string, OscArg[]][];
+}
+
+export interface OscStatus {
+  destinations: OscDestinationStatus[];
+  learning: boolean;
+  learned: string | null;
 }
 
 /** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */

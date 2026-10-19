@@ -763,6 +763,104 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .log div:not(:first-child) { color: var(--muted); }
 .log .ch { display: inline-block; width: 6.5ch; color: var(--accent-2); opacity: 0.8; }
 
+/* ---------- OSC ---------- */
+
+.osc {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+.osc .hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.osc .hint.error { color: #ffb3b3; }
+.osc .hint b { color: var(--text); font-weight: 600; }
+.osc .hint a { color: var(--accent-2); cursor: pointer; }
+.osc-dests { grid-column: 1 / -1; padding: 10px 14px; }
+.osc-dests h3 { margin-bottom: 6px; }
+.dest-list.scroll { max-height: 128px; overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
+.dest-row {
+  display: grid;
+  grid-template-columns: 16px 8px minmax(90px, 190px) minmax(110px, 1fr) 6px 72px minmax(100px, 160px) 26px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.dest-row:hover { background: #ffffff06; }
+.dest-row.sel { border-color: #1a9fff55; background: #1a9fff14; }
+.dest-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #ffffff33; }
+.dest-row .dot.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dest-row .dot.warn { background: var(--warm); }
+.dest-row.off .dest-name, .dest-row.off .field { opacity: 0.55; }
+.dest-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dest-row .field.port { width: 72px; }
+.dest-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.dest-status b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.osc-edit { display: flex; flex-direction: column; min-height: 0; padding: 10px 6px 8px 14px; }
+.osc-presetbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding-right: 8px; }
+.osc-presetbar .bar-group { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.osc-presetbar [data-preset], .osc-presetbar [data-save-name] { width: 190px; }
+.osc-presetbar [hidden] { display: none; }
+.osc-presetbar .mini { flex: none; white-space: nowrap; }
+.send-group label:not(.chk) { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.send-group .chk { color: var(--muted); font-weight: 500; }
+.osc-stream { margin: 10px 8px 4px 0; padding: 8px 10px; border-radius: 12px; background: #00000026; }
+.stream-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.stream-head .stream-on { font-weight: 600; }
+.stream-head > .help { margin-left: -6px; }
+.stream-head label.muted { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.stream-head .field.prefix { width: 90px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12.5px; }
+.stream-head .segmented button { padding: 3px 10px; }
+.stream-head.off > :not(.stream-on) { opacity: 0.4; }
+/* With the stream off, its groups don't matter: leave the room to the mappings. */
+.group-chips.off { display: none; }
+.group-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.chip:hover { color: var(--text); }
+.chip.on { border-color: #1a9fff88; background: #1a9fff2e; color: var(--text); }
+.osc-edit .maps-h { margin: 8px 0 4px; padding-right: 8px; }
+.osc-map-head, .osc-map-main {
+  display: grid;
+  grid-template-columns: 16px minmax(100px, 0.8fr) 26px minmax(120px, 1.8fr) 66px 104px 26px 26px;
+  align-items: center;
+  gap: 6px;
+}
+.osc-map-main .field.addr, .map-more .field.args { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12.5px; }
+.field.bad { border-color: #ff6b6b99; }
+.map-more .field.args { width: 130px; height: 26px; }
+.map-more label[hidden] { display: none; }
+.osc .map-list { flex: 1; min-height: 0; }
+
+.osc-values { display: flex; flex-direction: column; min-height: 0; padding: 12px 8px 8px 14px; }
+.osc-values h3 { padding-right: 6px; }
+.addr-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 6px; scrollbar-gutter: stable; font: 12px/1.3 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.addr-list .hint { font: 12.5px/1.4 "Barlow", system-ui, sans-serif; }
+.addr-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 3px 6px; border-radius: 6px; cursor: copy; }
+.addr-row:hover { background: #ffffff0d; }
+.addr-row .addr { min-width: 0; overflow-wrap: anywhere; color: var(--accent-2); }
+.addr-row + .addr-row { margin-top: 1px; }
+.addr-row .vals { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-align: right; }
+
+.osc-guide .guide-steps section:nth-child(2) { grid-row: auto; }
+.guide-app-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.guide-app-pick select { width: 220px; }
+.guide-app { padding: 10px 12px; border: 1px solid #ffffff14; border-radius: 12px; background: #ffffff08; }
+.guide-app p:last-child { margin-bottom: 0; }
+
+/* ~850 px tabs (a 1100-1279 px window with labels in the sidebar). */
+@container tab (max-width: 900px) {
+  .osc { grid-template-columns: minmax(0, 1fr) 250px; }
+  .dest-row { grid-template-columns: 16px 8px minmax(70px, 130px) minmax(100px, 1fr) 6px 68px minmax(80px, 120px) 26px; gap: 6px; }
+  .dest-row .field.port { width: 68px; }
+  .osc-presetbar [data-preset], .osc-presetbar [data-save-name] { width: 160px; }
+  .osc-map-head, .osc-map-main { grid-template-columns: 16px minmax(84px, 1fr) 26px minmax(90px, 1.3fr) 64px 100px 26px 26px; }
+}
+
 /* ---------- About ---------- */
 
 .about { height: 100%; overflow-y: auto; overflow-x: hidden; padding-right: 6px; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 18px; }

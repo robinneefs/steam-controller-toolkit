@@ -6,6 +6,7 @@ import { controlPlayback, formatTime, importRecordings, playRecording, startReco
 import { AboutTab } from "./tabs/about";
 import { HapticsTab } from "./tabs/haptics";
 import { MidiTab } from "./tabs/midi";
+import { OscTab } from "./tabs/osc";
 import { RawTab } from "./tabs/raw";
 import { RecorderTab } from "./tabs/recorder";
 import { ICONS } from "./tabs/icons";
@@ -14,7 +15,7 @@ import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
 const recorder = new RecorderTab();
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new RawTab(), recorder, new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new RawTab(), recorder, new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const navFoot = document.querySelector<HTMLElement>("#nav-foot")!;
@@ -156,6 +157,8 @@ function setDot(id: string, kind: "" | "ok" | "rec" | "play", note: string): voi
 }
 function renderDots(snap: Snapshot): void {
   setDot("midi", snap.midi.connected ? "ok" : "", snap.midi.connected ? `Sending to ${snap.midi.connected}` : "");
+  const osc = (snap.osc?.destinations ?? []).filter((d) => d.address);
+  setDot("osc", osc.length ? "ok" : "", osc.length > 1 ? `Sending to ${osc.length} destinations` : osc.length ? `Sending to ${osc[0].address}` : "");
   const t = snap.tape;
   setDot("recorder", t.recording ? "rec" : t.playback ? "play" : "", t.recording ? "Recording" : t.playback ? "Replaying" : "");
 }

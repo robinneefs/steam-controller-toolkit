@@ -3,8 +3,8 @@
 `docs/screenshots/*.png` are the real app UI at the default 1280 x 720 window (1.5x), fed a real
 recording, so they show real data without a controller or a window on screen.
 
-- `snapshots.json` (not committed): a recording replayed through the app's own Rust folds and
-  MIDI engine, as the 60-per-second snapshots the UI gets. Made by an ignored test.
+- `snapshots.json` (not committed): a recording replayed through the app's own Rust folds,
+  MIDI and OSC engines, as the 60-per-second snapshots the UI gets. Made by an ignored test.
 - `shots.html` + `mock.js`: the app's page with a stand-in for the Tauri backend that streams
   those snapshots and answers the commands the tabs call. `?tab=…&frame=…` picks the tab and the
   moment; see the top of `mock.js` for the other options.

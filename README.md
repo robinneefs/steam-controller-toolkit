@@ -91,6 +91,39 @@ output; pick it as a MIDI input in your DAW and you're done.
 
 ![MIDI Setup guide on Windows: choosing a port, turning it on in each DAW, playing notes](docs/screenshots/midi-guide.png)
 
+### OSC
+
+Send the controller to anything that speaks [OSC](https://opensoundcontrol.stanford.edu/)
+(Open Sound Control) over the network: visual and creative-coding tools, game engines, lighting
+desks, VJ software, DAWs. Several apps can get it at once, on this computer or others.
+
+- **Stream**: every input under a prefix (default `/sc`), nothing to set up:
+  `/sc/left_stick x y`, `/sc/trigger_right v`, `/sc/button/a 1`, `/sc/left_pad x y`
+  (while touched) plus `/pressure`, `/touch` and `/click`, `/sc/tilt pitch roll` (degrees),
+  `/sc/gyro` (°/s), `/sc/accel` (g), `/sc/quat w x y z`, `/sc/battery`, `/sc/connected`.
+  Grouped or one value per address, a rate cap (every report ~265/s, 120/s or 60/s; button
+  presses always go out at once), one bundle per report or single messages, and groups you can
+  turn off. Only values that change are sent.
+- **Mappings**: one input, shaped like a MIDI mapping (range, deadzone, curve, smoothing,
+  invert, toggle, only while held), to any address as a float, int or bool, with an output range
+  and fixed values before it (e.g. a track number). It sends when the value changes, 1/0 on
+  press and release, or just the address once per press (QLab's `/go`). **Learn** picks the input.
+- **Destinations**: each a host and port with its own preset; send to several at once.
+- **Presets** for TouchDesigner, Max/MSP, Pure Data, Processing, openFrameworks, SuperCollider,
+  Sonic Pi, Unity (OscJack), Unreal, Godot (godOSC), Chataigne, Open Stage Control, Isadora,
+  VDMX, QLC+, MadMapper, Millumin, Resolume Arena/Avenue, QLab, Reaper, Ableton Live
+  (AbletonOSC), Bitwig (DrivenByMoss), VCV Rack (cvOSCcv), ETC Eos and VRChat, each with the
+  app's default port and a step in the **Setup guide**. Edit them and save your own (JSON files,
+  like MIDI's).
+- **Addresses**: every address being sent with its live value; click one to copy it.
+- When the controller is lost, or a replay starts, stops or seeks, held buttons go back to 0,
+  mapped sticks back to rest, and `/sc/connected` to 0, so nothing is left held (VRChat keeps
+  walking otherwise). A recording that plays back drives OSC too.
+
+![OSC tab: three destinations, the Resolume preset's mappings with live meters, and the addresses it sends](docs/screenshots/osc.png)
+
+![OSC Setup guide: picking your app, pointing a destination at it, checking it arrives](docs/screenshots/osc-guide.png)
+
 ### Raw data
 
 ![Raw data tab: connection details, colour-coded byte map, decoded inputs and motion](docs/screenshots/raw-data.png)
@@ -131,7 +164,7 @@ Record a session and play it back without a controller:
 
 ![About tab: version, links, credits and licenses](docs/screenshots/about.png)
 
-More tools (stick tester, gyro mouse, other output types next to MIDI) are planned. See
+More tools (stick tester, gyro mouse, other outputs next to MIDI and OSC) are planned. See
 [docs/PROTOCOL.md](docs/PROTOCOL.md) for how the communication with the controller works.
 
 ## Requirements
@@ -229,8 +262,8 @@ npm run probe -- --raw --seconds 10
 | Path | What it is |
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
-| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, Raw data, Recorder and About tabs |
+| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI and OSC |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, OSC, Raw data, Recorder and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |
@@ -258,6 +291,7 @@ npm run probe -- --raw --seconds 10
 - MIDI via [midir](https://github.com/Boddlnagg/midir); on Windows, the app's own port uses
   Microsoft's [Windows MIDI Services](https://github.com/microsoft/MIDI) preview API
   (`Windows.Devices.Midi2`, MIT), shipped with the app under Microsoft's preview "go-live" terms.
+- OSC via [rosc](https://github.com/klingtnet/rosc).
 
 ## License
 

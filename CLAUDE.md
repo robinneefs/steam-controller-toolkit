@@ -2,7 +2,7 @@
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
-effect), MIDI (controller as a MIDI controller), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+effect), MIDI (controller as a MIDI controller), OSC (controller to any OSC app), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, rounded tiles; the tabs are in a
 left sidebar (`mockups/sidebar.html`, Panel style).
 
@@ -13,7 +13,7 @@ documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`.
 links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
 `docs/screenshots/` (taken at the default 1280 x 720 window, 1.5x); retake them when a tab's look changes
 with `tools/screenshots` (the real UI fed a real recording through a mock backend, captured by headless
-Edge/Chrome; see its README). The MIDI tab has two shots: `midi.png` and `midi-guide.png`.
+Edge/Chrome; see its README). The MIDI and OSC tabs have two shots each: `midi.png`, `midi-guide.png`, `osc.png`, `osc-guide.png`.
 
 Versioning: semver, `package.json` is the single source (`tauri.conf.json` points at it,
 `tools/sync-version.mjs` copies it to `src-tauri/Cargo.toml` + `Cargo.lock` as npm's `version` script).
@@ -35,22 +35,41 @@ without the user asking: a `v*` tag makes CI draft a release.
   unchanged; `Snapshot.tape` says what is recording/playing. Files live in
   `<app data dir>/recordings` (not Documents: macOS would prompt for access). During playback
   the power button is hidden and Haptics acts disconnected.
+- **Outputs** (`outputs.rs`): MIDI and OSC sit behind one `Outputs` value that `forward_events`
+  feeds every state report (~265 Hz, not the 60 Hz UI rate) from whatever the UI shows, live or
+  replay, and tells to `release_all` when switching between them, seeking, or losing the
+  controller. Later outputs (virtual gamepad, keyboard/mouse) plug in there. Inputs are read and
+  shaped by `shaping.rs` (`AXES`, `read`, `Shaping`: range, deadzone, curve, smoothing, invert,
+  toggle, hold; `Learner`), which each output's mapping embeds with `#[serde(flatten)]`, so preset
+  JSON keeps the shaping fields at the top level. Source names are mirrored in `SOURCES` in
+  `src/tabs/sources.ts`; keep them in sync. Learn ignores touch sensors and gyro, which move
+  whenever anything else does.
 - **MIDI**: `src-tauri/src/midi.rs` is the engine, pure and unit-tested: a `Preset` of
   `Mapping`s (source string -> shaping -> `Target` message) plus a `PadGrid` per trackpad;
   `Engine::process` turns each state report into messages, sent only when the value they carry
   changes. `midi_out.rs` owns the port (`midir`), `config.json` and saved presets in
-  `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`. `forward_events` feeds it every
-  state report (~265 Hz, not the 60 Hz UI rate) from whatever the UI shows, live or replay, and
-  releases held notes when switching between them, seeking, or losing the controller. Ports open
+  `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`; releasing turns held notes off. Ports open
   on a thread of their own (`tick` picks up the result), never on the event loop. macOS (CoreMIDI)
   and Linux (ALSA) get a virtual "Steam Controller" port from midir; not yet run on those systems,
   only built in CI. Windows gets one from Windows MIDI Services (`midi_win.rs`, app-to-app MIDI)
   on 11 25H2+, else the user picks a loopback port (loopMIDI). The MIDI tab's Setup guide is
   per system (`guideHtml`/`portStep` in `src/tabs/midi.ts`); keep it in step with the README.
-  Source names are mirrored in `SOURCES` in
-  `src/tabs/midi.ts` and the presets' JSON shape in `controller.ts`; keep them in sync. Learn
-  (`Engine::start_learn`) ignores touch sensors and gyro, which move whenever anything else does.
-  Other outputs (OSC, virtual gamepad, keyboard/mouse) should hang off the same feed.
+  The presets' JSON shape is mirrored in `controller.ts`; keep it in sync.
+- **OSC**: `src-tauri/src/osc.rs` is the engine for one destination, pure and unit-tested: a
+  `Preset` has a `Stream` (every input under a prefix, default `/sc`, names from `AXES`; grouped
+  or split; groups; units: sticks/pads -1..1, triggers/pressure 0..1, tilt degrees, gyro °/s,
+  accel g) and `Mapping`s (shaping -> address + float/int/bool + output range + fixed leading
+  args; on change / button 1/0 / trigger), plus a rate cap (axes only; button edges always go
+  out at once) and bundle on/off. Only changed values are sent. `Engine::release` lets go of
+  held buttons, puts continuous mappings at rest (VRChat keeps walking otherwise) and sends
+  `/connected 0`, once. `osc_out.rs` owns the destinations (host:port + preset each), one
+  non-blocking UDP socket per address family (`rosc` encodes), host lookups on a thread (IPv4
+  preferred: "localhost" is ::1 first on Windows and most OSC apps listen on IPv4), `config.json`
+  and saved presets in `<app data dir>/osc`, and `OscStatus` in `Snapshot.osc`. First run: one
+  Generic destination at 127.0.0.1:9000, off. `builtin_presets` has one per app with its default
+  port, checked against each app's docs or source (Oct 2026); the OSC tab's guide (`APPS` in
+  `src/tabs/osc.ts`) has a step per preset by name, and the README lists them; keep the three in
+  step. No haptics over OSC (the user decided).
 - **Windows MIDI Services** (`midi_win.rs`): the API is a preview until Windows ships it (late
   Nov 2026). We embed Microsoft's preview `Windows.Devices.Midi2.dll` + `.pri`
   (`src-tauri/vendor/windows-midi-services`, extracted to `<app data>/midi/windows-midi-services/<PREVIEW>`
@@ -167,6 +186,6 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
   must fit without horizontal scrolling. Tabs sit in a grouped sidebar (`Tab.group`, `Tab.icon` from
   `src/tabs/icons.ts`): 208 px with names from 1100 px wide, a 68 px icon rail below that or when
   collapsed (remembered in localStorage); below 1100 px Expand opens it over the tab (`.narrow.nav-open`). So the tabs get as little as ~850 px (1100 px with names);
-  size tab layouts with `@container tab` (`#tab-content`), not the window width. The MIDI tab has a
+  size tab layouts with `@container tab` (`#tab-content`), not the window width. The MIDI and OSC tabs have a
   narrower layout for that (`@container tab (max-width: 900px)`). Check new tabs at 1100 and 960 px.
   Tabs scroll vertically if needed, with the themed thin scrollbars.

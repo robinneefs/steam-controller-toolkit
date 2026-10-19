@@ -7,11 +7,27 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 
 ## [Unreleased]
 
+### Added
+
+- **OSC tab**: send the controller to any app that speaks OSC, on this computer or others.
+  - A stream of every input under `/sc` (grouped or one value per address), with a rate cap,
+    bundles and groups to turn off; only changed values are sent, button presses at once.
+  - Mappings from any input, shaped like MIDI's, to any address as a float, int or bool, with an
+    output range, fixed values before it, and on-change, button (1/0) or trigger sends. Learn
+    picks the input.
+  - Several destinations at once, each with its own host, port and preset.
+  - Presets for 26 apps (TouchDesigner, Max, Pure Data, Resolume, QLab, Reaper, Ableton via
+    AbletonOSC, Bitwig via DrivenByMoss, VCV Rack, ETC Eos, VRChat and more) with their default
+    ports and a setup step each in the Setup guide; save your own.
+  - A live list of every address sent and its value; click to copy.
+  - Losing the controller, or starting, stopping or seeking a replay, lets go of held buttons
+    and mapped sticks and sends `/sc/connected 0`.
+
 ### Changed
 
 - The tabs moved from the top bar to a sidebar, grouped as Input, Output and Tools, so new tools
   have room. It shows names from 1100 px wide and icons only below that (hover for the name);
-  Collapse picks icons at any size; below 1100 px, Expand opens the sidebar over the tab. Dots show MIDI sending and the Recorder recording or replaying.
+  Collapse picks icons at any size; below 1100 px, Expand opens the sidebar over the tab. Dots show MIDI and OSC sending and the Recorder recording or replaying.
 - The window now opens at 1280 x 720 (was 1100 x 720).
 
 ## [0.2.1] - 2026-10-19

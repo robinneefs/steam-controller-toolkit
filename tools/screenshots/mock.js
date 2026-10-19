@@ -3,9 +3,10 @@
 // at 60 per second and answers the commands the tabs call at start-up.
 //
 // URL parameters: tab=<tab id>, frame=<snapshot to stop at>, replay=1 (show it as a paused
-// replay of the recording, as the Recorder tab does), guide=1 (open the MIDI Setup guide),
+// replay of the recording, as the Recorder tab does), guide=1 (open the tab's Setup guide),
 // experimental=1 (the Windows port is experimental, as on Windows before Microsoft's MIDI update),
-// stuck=1 (that port is out until a restart: the MIDI service stopped responding).
+// stuck=1 (that port is out until a restart: the MIDI service stopped responding), dest=<n> (the
+// OSC tab edits destination n, from 0).
 (() => {
   const params = new URLSearchParams(location.search);
   const stopAt = Number(params.get("frame") ?? 120);
@@ -13,6 +14,10 @@
   const experimental = params.get("experimental") === "1";
   const stuck = params.get("stuck") === "1";
   const callbacks = {};
+  // The OSC tab opens its guide on the first visit; shots show it only with guide=1.
+  try {
+    localStorage.setItem("osc-guide-seen", "1");
+  } catch {}
   const listeners = {};
   let nextId = 1;
   let data = null;
@@ -38,6 +43,9 @@
       { name: "Effects only", builtin: true },
     ],
     list_recordings: () => recordings,
+    osc_destinations: () => structuredClone(data.osc.destinations),
+    osc_list_presets: () => data.osc.presets,
+    osc_load_preset: (args) => structuredClone(data.osc.builtin.find((p) => p.name === args.name)),
   };
 
   window.__TAURI_INTERNALS__ = {
@@ -89,6 +97,8 @@
         if (!clicked && listeners.controller) {
           clicked = true;
           document.querySelector(`.sidebar button[data-tab="${params.get("tab") ?? "visualizer"}"]`)?.click();
+          const dest = params.get("dest");
+          if (dest) setTimeout(() => document.querySelectorAll(".dest-row")[Number(dest)]?.click(), 300);
           if (params.get("guide") === "1") setTimeout(() => document.querySelector("[data-guide]")?.click(), 500);
         }
         i++;

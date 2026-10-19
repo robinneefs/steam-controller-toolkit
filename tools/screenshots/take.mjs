@@ -14,6 +14,8 @@ const SHOTS = {
   haptics: { tab: "haptics", frame: 125 },
   midi: { tab: "midi", frame: 345 },
   "midi-guide": { tab: "midi", frame: 345, guide: 1, experimental: 1 },
+  osc: { tab: "osc", frame: 245, dest: 1 },
+  "osc-guide": { tab: "osc", frame: 245, guide: 1 },
   "raw-data": { tab: "raw", frame: 345 },
   recorder: { tab: "recorder", frame: 132, replay: 1 },
   about: { tab: "about", frame: 125 },
