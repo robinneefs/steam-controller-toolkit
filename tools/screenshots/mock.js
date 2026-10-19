@@ -4,12 +4,14 @@
 //
 // URL parameters: tab=<tab id>, frame=<snapshot to stop at>, replay=1 (show it as a paused
 // replay of the recording, as the Recorder tab does), guide=1 (open the MIDI Setup guide),
-// experimental=1 (the Windows port is experimental, as on Windows before Microsoft's MIDI update).
+// experimental=1 (the Windows port is experimental, as on Windows before Microsoft's MIDI update),
+// stuck=1 (that port is out until a restart: the MIDI service stopped responding).
 (() => {
   const params = new URLSearchParams(location.search);
   const stopAt = Number(params.get("frame") ?? 120);
   const replay = params.get("replay") === "1";
   const experimental = params.get("experimental") === "1";
+  const stuck = params.get("stuck") === "1";
   const callbacks = {};
   const listeners = {};
   let nextId = 1;
@@ -29,7 +31,7 @@
     },
     "plugin:event|unlisten": () => null,
     midi_setup: () => ({ preset: data.preset, output: { kind: "virtual" } }),
-    midi_ports: () => ({ ports: ["loopMIDI Port"], virtual_port: true, virtual_experimental: experimental, virtual_note: null }),
+    midi_ports: () => ({ ports: ["loopMIDI Port"], virtual_port: !stuck, virtual_experimental: experimental || stuck, virtual_note: stuck ? "The Windows MIDI service isn't responding" : null }),
     midi_list_presets: () => [
       { name: "Effects + drums", builtin: true },
       { name: "Pad instrument", builtin: true },

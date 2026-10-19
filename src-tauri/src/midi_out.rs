@@ -73,6 +73,7 @@ pub struct MidiPorts {
     /// This PC can have our own virtual port.
     pub virtual_port: bool,
     /// It's Windows' preview version, which works once per Windows restart: offer it as opt-in.
+    /// Also true while that service is stuck (`virtual_port` is then false until a restart).
     pub virtual_experimental: bool,
     /// Why it can't, when it can't (Windows only).
     pub virtual_note: Option<String>,
@@ -187,8 +188,10 @@ impl MidiOut {
         #[cfg(windows)]
         let support = crate::midi_win::available();
         #[cfg(windows)]
+        // A stuck service is still the experimental port (it's out until the PC restarts), so the
+        // UI keeps explaining that rather than treating the PC as unable to have one.
         let (virtual_experimental, virtual_note) =
-            (support == Ok(crate::midi_win::Support::Preview), support.err());
+            (support == Ok(crate::midi_win::Support::Preview) || crate::midi_win::stuck(), support.err());
         #[cfg(not(windows))]
         let (virtual_experimental, virtual_note) = (false, None);
         Ok(MidiPorts { ports, virtual_port: virtual_note.is_none(), virtual_experimental, virtual_note })

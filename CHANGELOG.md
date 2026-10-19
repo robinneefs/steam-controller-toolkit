@@ -12,6 +12,11 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 - MIDI Setup guide on Windows: the experimental port and a loopback port side by side, with why
   the port is experimental, the fix in Microsoft's MIDI update, and what to do if it doesn't work.
 
+### Fixed
+
+- MIDI Setup guide on Windows: once the MIDI service stopped responding, the guide (e.g. after
+  ↻ Look for ports) dropped the experimental explanation; it now says the port is out until a restart.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added

@@ -641,6 +641,7 @@ select.field.edited { border-color: #ffb54788; }
 .badge.sure { border: 1px solid #5fe39a66; background: #5fe39a1a; color: var(--ok); }
 .callout { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--warm); border-radius: 0 8px 8px 0; background: #ffb5470f; color: #c9d3de; }
 .callout.fix { border-left-color: var(--accent); background: #1a9fff14; }
+.port-down { padding: 8px 10px; border: 1px solid #ffb54755; border-radius: 8px; background: #ffb5470f; }
 .port-steps { margin: 0 0 6px; padding-left: 20px; color: #c9d3de; }
 .port-steps li { margin-bottom: 6px; }
 .port-steps li .muted { display: block; margin-top: 2px; }

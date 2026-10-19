@@ -234,8 +234,12 @@ function portStep(v: VirtualSupport, ports: string[]): string {
   return `<div class="port-options">
       <div class="port-option">
         <div class="port-option-head"><b>A. The app's own port</b><span class="badge exp">Experimental</span></div>
-        <p>Nothing to install: pick <b>Steam Controller (experimental)</b> under <b>Output</b>, then pick it as the MIDI
-          input in your DAW.</p>
+        ${v.available
+          ? `<p>Nothing to install: pick <b>Steam Controller (experimental)</b> under <b>Output</b>, then pick it as the MIDI
+              input in your DAW.</p>`
+          : `<p class="port-down"><span class="warn-text">Not available right now:</span> Windows already made this port once
+              since the PC started, and its MIDI service stopped responding. Restart the PC to use it again, or use a
+              loopback port (B) in the meantime.</p>`}
         <div class="callout">
           <b>Why experimental?</b> It runs on Windows MIDI Services, which Microsoft still calls a preview. Until their fix,
           Windows can make this port only <b>once per restart</b>: it works the first time you open the app after starting

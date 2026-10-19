@@ -94,6 +94,11 @@ pub fn available() -> Result<Support, String> {
         .clone()
 }
 
+/// A call into the service timed out: today's preview service after its one port per restart.
+pub fn stuck() -> bool {
+    STUCK.load(Ordering::Relaxed)
+}
+
 fn check() -> Result<Support, String> {
     let build = windows_build();
     if build < MIN_BUILD {
