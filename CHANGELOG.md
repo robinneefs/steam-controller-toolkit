@@ -7,6 +7,8 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-19
+
 ### Changed
 
 - MIDI Setup guide on Windows: the experimental port and a loopback port side by side, with why
@@ -16,6 +18,12 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 
 - MIDI Setup guide on Windows: once the MIDI service stopped responding, the guide (e.g. after
   ↻ Look for ports) dropped the experimental explanation; it now says the port is out until a restart.
+- Recorder on Windows: seeking or resuming further into a recording than the PC had been on
+  froze the app.
+- Opening or importing a long recording no longer pauses live input, and editing a MIDI preset
+  while playing no longer stalls MIDI output.
+- Steadier live updates: the UI now gets fresh state at an even ~62 per second (was ~53, with
+  some frames skipped).
 
 ## [0.2.0] - 2026-10-18
 
@@ -64,5 +72,6 @@ First release.
 - Power off the controller, click any value to copy it, and a warning while Steam is running.
 - Builds for Windows, macOS and Linux, with portable versions.
 
+[0.2.1]: https://github.com/robinneefs/steam-controller-toolkit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/robinneefs/steam-controller-toolkit/compare/v0.1.0-windows-portable...v0.2.0
 [0.1.0]: https://github.com/robinneefs/steam-controller-toolkit/releases/tag/v0.1.0-windows-portable
