@@ -1,0 +1,9 @@
+# Steam Controller Toolkit: access for the signed-in user (uaccess), installed by the .deb and .rpm.
+# Steam's own rules grant the same; this covers PCs without Steam.
+
+# Reading the controller: its hidraw devices, over USB / the wireless dongle and over Bluetooth.
+KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*28DE:*", MODE="0660", TAG+="uaccess"
+
+# Keyboard & mouse and Gamepad output: virtual devices through uinput.
+KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"

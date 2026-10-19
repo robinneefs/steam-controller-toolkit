@@ -34,6 +34,20 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/udev/rules.d/60-steam-controller-toolkit.rules": "linux/60-steam-controller-toolkit.rules"
+        },
+        "postInstallScript": "linux/postinst.sh"
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib/udev/rules.d/60-steam-controller-toolkit.rules": "linux/60-steam-controller-toolkit.rules"
+        },
+        "postInstallScript": "linux/postinst.sh"
+      }
+    }
   }
 }

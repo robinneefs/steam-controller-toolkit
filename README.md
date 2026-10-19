@@ -182,8 +182,11 @@ More tools (stick tester, gyro mouse, other outputs next to MIDI and OSC) are pl
 - **Steam can stay running**, but while it runs, Steam's *Desktop Layout* turns the controller
   into a mouse and keyboard. The app shows a warning when Steam is running; close Steam or clear
   the Desktop Layout bindings if that gets in the way.
-- **Linux**: your user needs access to the controller's `hidraw` devices. Steam installs a udev
-  rule for this; without Steam, see [docs/PROTOCOL.md](docs/PROTOCOL.md#platform-notes).
+- **Linux**: your user needs access to the controller's `hidraw` devices, and to `/dev/uinput`
+  for the keyboard & mouse and gamepad outputs. The .deb and .rpm install a udev rule for both
+  ([`src-tauri/linux/60-steam-controller-toolkit.rules`](src-tauri/linux/60-steam-controller-toolkit.rules));
+  Steam's own rules cover them too. With the AppImage and without Steam, copy that file to
+  `/etc/udev/rules.d/` and run `sudo udevadm control --reload && sudo udevadm trigger`.
 - **MIDI on Windows**: the app's own port needs Windows 11 25H2+ and is experimental until
   Microsoft's November update; a loopback port works everywhere (see [MIDI](#midi)).
 

@@ -315,12 +315,17 @@ Desktop Layout bindings in Steam → Settings → Controller.
 
 - **Windows**: works as is; no driver or admin rights needed.
 - **Linux** (untested): the app needs read/write access to the controller's `/dev/hidraw*`
-  nodes. Steam's `steam-devices` package installs suitable udev rules. Without it, a rule like
-  the following in `/etc/udev/rules.d/70-steam-controller.rules` (then replug) grants access to
-  the logged-in user:
+  nodes. Steam's `steam-devices` package installs suitable udev rules, and so do the app's .deb
+  and .rpm (`src-tauri/linux/60-steam-controller-toolkit.rules`, which also opens `/dev/uinput`
+  for the keyboard & mouse and gamepad outputs). Without either, put this in
+  `/etc/udev/rules.d/60-steam-controller-toolkit.rules`, then run
+  `sudo udevadm control --reload && sudo udevadm trigger` (or replug) to grant the signed-in user
+  access:
 
   ```
   KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", TAG+="uaccess"
+  KERNEL=="hidraw*", KERNELS=="*28DE:*", MODE="0660", TAG+="uaccess"
+  KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"
   ```
 
   Linux 7.3 and later also ship a `hid-steam` kernel driver for this controller, which may
