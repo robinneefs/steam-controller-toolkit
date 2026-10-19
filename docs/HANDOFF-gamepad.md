@@ -1,6 +1,6 @@
 # Handoff: Keyboard & mouse and Gamepad outputs
 
-Status as of 2026-10-19. Steps 1 and 2 below are done and pushed to `claude/relaxed-fermat-5ncc5j`
+Status as of 2026-10-19. Steps 1, 2 and 3 below are done and pushed to `claude/relaxed-fermat-5ncc5j`
 (on top of 3a56280, the engine and backends). Don't commit or push without asking the user. Read `CLAUDE.md` first. Delete this file once the work is done.
 
 ## What the user asked for
@@ -238,7 +238,10 @@ Icons go in `icons.ts`. The tabs follow the MIDI/OSC look (`docs/screenshots/mid
      `driver=missing`; `take.mjs` has `keymouse`, `gamepad`, `gamepad-driver` shots. Checked at
      1280, 1100 and 960 px with a synthetic recording, and driven in headless Chromium (key capture
      binds Ctrl+Shift+K, no console errors). The README shots still need a real recording.
-3. Linux packaging:
+3. ~~Linux packaging:~~ Done: `src-tauri/linux/60-steam-controller-toolkit.rules` (hidraw over
+   USB/dongle and Bluetooth, uinput) and `linux/postinst.sh` (reloads udev), in the .deb and .rpm
+   via `bundle.linux` in `tauri.conf.json`; checked inside packages built on Linux, not installed
+   anywhere yet. README and PROTOCOL.md updated. Originally:
    - Add `src-tauri/linux/60-steam-controller-toolkit.rules` with:
      - hidraw 28de with `TAG+="uaccess"`
      - `KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"`
