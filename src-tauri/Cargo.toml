@@ -31,3 +31,14 @@ rosc = "0.11"
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.100"
 windows-collections = "0.100"
+# Keyboard & mouse output (SendInput), full-screen detection, running the driver installer.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Shell",
+] }
+# Gamepad output: a virtual Xbox 360 controller through the ViGEmBus driver, rumble included.
+vigem-client = { version = "0.1.4", features = ["unstable_xtarget_notification"] }
+
+# Keyboard & mouse and Gamepad output on Linux: virtual devices through uinput.
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13"

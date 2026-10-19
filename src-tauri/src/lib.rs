@@ -13,6 +13,10 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
 
+mod devices;
+#[cfg(windows)]
+mod inject_win;
+mod layout;
 mod midi;
 #[cfg(windows)]
 #[allow(non_snake_case, non_camel_case_types, non_upper_case_globals, dead_code, clippy::all)]
@@ -26,6 +30,10 @@ mod outputs;
 mod shaping;
 mod tape;
 mod tray;
+#[cfg(target_os = "linux")]
+mod uinput;
+#[cfg(windows)]
+mod vigem;
 use midi::Preset;
 use midi_out::{MidiOut, MidiPorts, MidiStatus, OutputChoice, PresetInfo};
 use osc_out::{Destination, OscOut, OscStatus};
