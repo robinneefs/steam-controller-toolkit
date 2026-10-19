@@ -5,7 +5,9 @@ import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./contro
 import { setAttr, setHidden, setText } from "./dom";
 import { controlPlayback, formatTime, importRecordings, playRecording, startRecording, stopRecording } from "./tape";
 import { AboutTab } from "./tabs/about";
+import { GamepadTab } from "./tabs/gamepad";
 import { HapticsTab } from "./tabs/haptics";
+import { KeyMouseTab } from "./tabs/keymouse";
 import { MidiTab } from "./tabs/midi";
 import { OscTab } from "./tabs/osc";
 import { RawTab } from "./tabs/raw";
@@ -17,7 +19,7 @@ import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
 const recorder = new RecorderTab();
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new RawTab(), recorder, new SettingsTab(), new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new KeyMouseTab(), new GamepadTab(), new RawTab(), recorder, new SettingsTab(), new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const navFoot = document.querySelector<HTMLElement>("#nav-foot")!;
@@ -65,7 +67,7 @@ for (const [group, heading] of GROUPS) {
   h.textContent = heading;
   nav.appendChild(h);
   for (const tab of members) {
-    const b = navItem(tab.title, tab.icon);
+    const b = navItem(tab.navTitle ?? tab.title, tab.icon);
     b.dataset.tab = tab.id;
     b.addEventListener("click", () => show(tab));
     nav.appendChild(b);
@@ -163,6 +165,13 @@ function renderDots(snap: Snapshot): void {
   setDot("midi", snap.midi.connected ? "ok" : "", snap.midi.connected ? `Sending to ${snap.midi.connected}` : "");
   const osc = (snap.osc?.destinations ?? []).filter((d) => d.address);
   setDot("osc", osc.length ? "ok" : "", osc.length > 1 ? `Sending to ${osc.length} destinations` : osc.length ? `Sending to ${osc[0].address}` : "");
+  const play = snap.play;
+  if (play) {
+    const km = play.keymouse.enabled && (play.active === "desktop" || play.active === "game");
+    setDot("keymouse", km ? "ok" : "", km ? `${play.active === "desktop" ? "Desktop" : "Game"} layout` : "");
+    const pad = play.gamepad.connected;
+    setDot("gamepad", pad ? "ok" : "", pad ? (play.gamepad.player ? `Player ${play.gamepad.player}` : "Connected") : "");
+  }
   const t = snap.tape;
   setDot("recorder", t.recording ? "rec" : t.playback ? "play" : "", t.recording ? "Recording" : t.playback ? "Replaying" : "");
 }

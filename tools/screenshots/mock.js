@@ -6,13 +6,16 @@
 // replay of the recording, as the Recorder tab does), guide=1 (open the tab's Setup guide),
 // experimental=1 (the Windows port is experimental, as on Windows before Microsoft's MIDI update),
 // stuck=1 (that port is out until a restart: the MIDI service stopped responding), dest=<n> (the
-// OSC tab edits destination n, from 0).
+// OSC tab edits destination n, from 0), slot=game (the Keyboard & mouse tab edits its Game layout),
+// driver=missing (the Gamepad tab without its driver, as on Windows before installing ViGEmBus).
 (() => {
   const params = new URLSearchParams(location.search);
   const stopAt = Number(params.get("frame") ?? 120);
   const replay = params.get("replay") === "1";
   const experimental = params.get("experimental") === "1";
   const stuck = params.get("stuck") === "1";
+  const driverMissing = params.get("driver") === "missing";
+  const tab = params.get("tab") ?? "visualizer";
   const callbacks = {};
   // The OSC tab opens its guide on the first visit; shots show it only with guide=1.
   try {
@@ -47,6 +50,9 @@
     osc_list_presets: () => data.osc.presets,
     osc_load_preset: (args) => structuredClone(data.osc.builtin.find((p) => p.name === args.name)),
     background_settings: () => ({ close_to_tray: true, autostart: true }),
+    play_setup: () => ({ ...structuredClone(data.play.setup), mode: params.get("slot") === "game" ? "game" : "desktop" }),
+    play_list_presets: (args) => data.play.presets[args.kind],
+    play_load_preset: (args) => structuredClone(data.play.builtin[args.kind].find((l) => l.name === args.name)),
   };
 
   window.__TAURI_INTERNALS__ = {
@@ -68,7 +74,7 @@
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
 
-  function emit(snap) {
+  function emit(snap, index) {
     if (replay) {
       snap.slot = null;
       snap.tape = {
@@ -76,6 +82,11 @@
         playback: { name: recordings[0].name, position: stopAt / 60, duration: recordings[0].seconds, paused: true, looping: false },
         message: null,
       };
+    }
+    // The Gamepad tab's live view shows the pad layout; the snapshots carry it on the side.
+    if (snap.play && tab === "gamepad") snap.play.preview = data.play.pad_previews[Math.min(index, data.play.pad_previews.length - 1)];
+    if (snap.play && driverMissing) {
+      snap.play.gamepad = { ...snap.play.gamepad, support: { kind: "missing", detail: "The ViGEmBus driver isn't installed" }, connected: false, player: null };
     }
     // The app sends the battery from the start of a replay; this recording reports it later.
     snap.battery ??= { charge_state: 1, level: 89 };
@@ -93,11 +104,11 @@
       let clicked = false;
       const timer = setInterval(() => {
         const last = Math.min(stopAt, data.frames.length - 1);
-        emit(structuredClone(data.frames[Math.min(i, last)]));
+        emit(structuredClone(data.frames[Math.min(i, last)]), Math.min(i, last));
         if (i >= last) clearInterval(timer);
         if (!clicked && listeners.controller) {
           clicked = true;
-          document.querySelector(`.sidebar button[data-tab="${params.get("tab") ?? "visualizer"}"]`)?.click();
+          document.querySelector(`.sidebar button[data-tab="${tab}"]`)?.click();
           const dest = params.get("dest");
           if (dest) setTimeout(() => document.querySelectorAll(".dest-row")[Number(dest)]?.click(), 300);
           if (params.get("guide") === "1") setTimeout(() => document.querySelector("[data-guide]")?.click(), 500);

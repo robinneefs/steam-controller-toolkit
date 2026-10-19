@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Snapshot } from "../controller";
+import { playStatusText } from "./layout-editor";
 import type { Tab } from "./tab";
 import { ICONS } from "./icons";
 
@@ -8,6 +9,8 @@ interface BackgroundSettings {
   close_to_tray: boolean;
   autostart: boolean;
 }
+
+const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`);
 
 /** App settings: running in the background (tray, start with the system). */
 export class SettingsTab implements Tab {
@@ -26,7 +29,7 @@ export class SettingsTab implements Tab {
           <label class="setting">
             <input type="checkbox" data-s="close_to_tray" />
             <span><b>Keep running in the tray when the window is closed</b>
-              <span class="muted">MIDI and OSC keep sending with the window closed. Click the tray icon to open it
+              <span class="muted">MIDI, OSC, keyboard &amp; mouse and the gamepad keep working with the window closed. Click the tray icon to open it
               again, or right-click it to quit.</span></span>
           </label>
           <label class="setting">
@@ -76,6 +79,9 @@ export class SettingsTab implements Tab {
     const lines = [
       `<b>MIDI</b> ${midi}`,
       `<b>OSC</b> ${osc.length ? `sending to ${osc.join(", ")}` : "off"}`,
+      ...(snap.play
+        ? [`<b>Keys &amp; mouse</b> ${escape(playStatusText(snap.play, "keymouse")[1])}`, `<b>Gamepad</b> ${escape(playStatusText(snap.play, "gamepad")[1])}`]
+        : []),
       `<b>Recorder</b> ${snap.tape.recording ? "recording" : "idle"}`,
     ];
     const html = lines.map((l) => `<li>${l}</li>`).join("");

@@ -1,8 +1,7 @@
 # Handoff: Keyboard & mouse and Gamepad outputs
 
-Status as of 2026-10-19. The engine and backends are in commit 3a56280 (work in progress); step 1
-below (`play_out.rs` and its wiring) is done but uncommitted. Don't commit or push without asking
-the user. Read `CLAUDE.md` first. Delete this file once the work is done.
+Status as of 2026-10-19. Steps 1 and 2 below are done and pushed to `claude/relaxed-fermat-5ncc5j`
+(on top of 3a56280, the engine and backends). Don't commit or push without asking the user. Read `CLAUDE.md` first. Delete this file once the work is done.
 
 ## What the user asked for
 
@@ -225,7 +224,20 @@ Icons go in `icons.ts`. The tabs follow the MIDI/OSC look (`docs/screenshots/mid
 1. ~~`play_out.rs` + `Outputs`/`Watched` (add keymouse/gamepad to `View::watched` in `tray.rs`) +
    `forward_events` (rumble and switch haptics need `app.state::<Hub>()` and the live slot) +
    commands + Snapshot. Unit-test what you can: mode logic, preset store, config round trip.~~ Done.
-2. Frontend: both tabs, `controller.ts` types, `main.ts` registration and dots, Settings list.
+2. ~~Frontend: both tabs, `controller.ts` types, `main.ts` registration and dots, Settings list.~~ Done:
+   - `src/tabs/keys.ts` (KEYS mirror, `KeyboardEvent.code` → name, labels, lists for hard keys),
+     `src/tabs/layout-editor.ts` (`CONTROLS` mirror, `LayoutEditor` cards, the binding picker
+     popover with key capture, `playBarHtml`/`renderPlayBar`, `PresetBar`, notes, chips),
+     `src/tabs/keymouse.ts`, `src/tabs/gamepad.ts` (SVG Xbox pad; driver explainer for Windows,
+     udev rule for Linux, "not available" on macOS; `play_check_driver` each time the tab opens).
+   - `Tab.navTitle`: the sidebar says "Keys & mouse" ("Keyboard & mouse" didn't fit in 208 px).
+   - Below 900 px the auto switch checkbox reads "Auto".
+   - Icons `keymouse`, `gamepad`; sidebar dots; Settings' background list.
+   - Screenshot tool: the snapshots test now adds `play` (setup, preset lists, built-ins and
+     `pad_previews`); `mock.js` answers the `play_*` commands and takes `slot=game` and
+     `driver=missing`; `take.mjs` has `keymouse`, `gamepad`, `gamepad-driver` shots. Checked at
+     1280, 1100 and 960 px with a synthetic recording, and driven in headless Chromium (key capture
+     binds Ctrl+Shift+K, no console errors). The README shots still need a real recording.
 3. Linux packaging:
    - Add `src-tauri/linux/60-steam-controller-toolkit.rules` with:
      - hidraw 28de with `TAG+="uaccess"`

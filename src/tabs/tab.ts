@@ -7,6 +7,8 @@ export type TabGroup = "input" | "output" | "tools" | "app";
 export interface Tab {
   id: string;
   title: string;
+  /** A shorter name for the sidebar, if the title doesn't fit there. */
+  navTitle?: string;
   group: TabGroup;
   /** Inline SVG for the sidebar (24 x 24 stroke icon, see `src/tabs/icons.ts`). */
   icon: string;

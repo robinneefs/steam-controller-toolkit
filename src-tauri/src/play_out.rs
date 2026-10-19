@@ -284,14 +284,14 @@ impl PresetStore {
 
 /// Pointer and scroll speed from frames, smoothed for the live view.
 #[derive(Debug, Default)]
-struct Speed {
+pub(crate) struct Speed {
     last: Option<Duration>,
     mouse: [f32; 2],
     scroll: [f32; 2],
 }
 
 impl Speed {
-    fn add(&mut self, f: &Frame, now: Duration) {
+    pub(crate) fn add(&mut self, f: &Frame, now: Duration) {
         let dt = self.last.map_or(0.0, |l| now.saturating_sub(l).as_secs_f32());
         self.last = Some(now);
         if dt <= 0.0 {
@@ -301,6 +301,23 @@ impl Speed {
             self.mouse[i] += (f.mouse[i] / dt - self.mouse[i]) * 0.1;
             self.scroll[i] += (f.scroll[i] / dt - self.scroll[i]) * 0.1;
         }
+    }
+}
+
+/// A frame as the live view shows it.
+pub(crate) fn preview(slot: Option<Slot>, f: Option<&Frame>, speed: &Speed) -> Preview {
+    match f {
+        Some(f) => Preview {
+            slot,
+            pad: f.pad,
+            keys: f.keys.iter().map(|k| KEYS[k as usize]).collect(),
+            mouse_buttons: f.mouse_buttons,
+            mouse: speed.mouse,
+            scroll: speed.scroll,
+            gyro_active: f.gyro_active,
+            lit: f.lit,
+        },
+        None => Preview { slot, ..Default::default() },
     }
 }
 
@@ -701,19 +718,7 @@ impl PlayOut {
             (None, Some(slot)) if self.applied == Some(slot) => Some(self.engine.frame()),
             _ => None,
         };
-        let preview = match frame {
-            Some(f) => Preview {
-                slot: self.preview_slot,
-                pad: f.pad,
-                keys: f.keys.iter().map(|k| KEYS[k as usize]).collect(),
-                mouse_buttons: f.mouse_buttons,
-                mouse: self.speed.mouse,
-                scroll: self.speed.scroll,
-                gyro_active: f.gyro_active,
-                lit: f.lit,
-            },
-            None => Preview { slot: self.preview_slot, ..Default::default() },
-        };
+        let preview = preview(self.preview_slot, frame, &self.speed);
         PlayStatus {
             mode: self.mode,
             auto_switch: self.config.auto_switch,

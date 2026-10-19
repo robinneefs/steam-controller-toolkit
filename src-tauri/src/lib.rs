@@ -673,9 +673,9 @@ mod screenshot_data {
     use super::*;
     use std::collections::VecDeque;
 
-    /// Replays a recording through the same folds, MIDI and OSC engines as the app and writes the
-    /// snapshots the UI would get (60 per second), plus the MIDI preset and OSC destinations, as
-    /// JSON for the README screenshots (tools/screenshots):
+    /// Replays a recording through the same folds, MIDI, OSC and layout engines as the app and
+    /// writes the snapshots the UI would get (60 per second), plus the MIDI preset, OSC destinations
+    /// and play setup, as JSON for the README screenshots (tools/screenshots):
     /// `SC_RECORDING=<file.screc> SC_SNAPSHOTS=<out.json> cargo test -p steam-controller-app --lib snapshots -- --ignored`
     #[test]
     #[ignore]
@@ -699,6 +699,17 @@ mod screenshot_data {
         // When each destination sent each message, for its msg/s.
         let mut osc_sent: Vec<VecDeque<Duration>> = dests.iter().map(|_| VecDeque::new()).collect();
         let mut osc_msgs = Vec::new();
+        // Keyboard & mouse and the gamepad both on, in Desktop mode; the Gamepad tab's live view
+        // gets the pad layout's preview instead (mock.js swaps it in).
+        let play_setup = play_out::Config {
+            keymouse: play_out::KeyMouseConfig { enabled: true, ..Default::default() },
+            gamepad: play_out::GamepadConfig { enabled: true, ..Default::default() },
+            auto_switch: true,
+        };
+        let mut km_engine = layout::Engine::new(play_setup.keymouse.desktop.clone());
+        let mut pad_engine = layout::Engine::new(play_setup.gamepad.layout.clone());
+        let (mut km_speed, mut pad_speed) = (play_out::Speed::default(), play_out::Speed::default());
+        let mut pad_previews = Vec::new();
         let mut states: VecDeque<Duration> = VecDeque::new();
         let mut frames = Vec::new();
         let mut next = Duration::ZERO;
@@ -737,11 +748,29 @@ mod screenshot_data {
                         .collect(),
                     ..Default::default()
                 };
+                fold.snap.play = PlayStatus {
+                    mode: Mode::Desktop,
+                    auto_switch: true,
+                    active: Some(Slot::Desktop),
+                    keymouse: play_out::KeyMouseStatus { enabled: true, supported: true, error: None },
+                    gamepad: play_out::GamepadStatus {
+                        enabled: true,
+                        support: Some(devices::PadSupport::Ready),
+                        connected: true,
+                        player: Some(1),
+                        ..Default::default()
+                    },
+                    preview: play_out::preview(Some(Slot::Desktop), Some(km_engine.frame()), &km_speed),
+                    ..Default::default()
+                };
+                pad_previews.push(play_out::preview(Some(Slot::Pad), Some(pad_engine.frame()), &pad_speed));
                 frames.push(fold.snap.clone());
                 next += EMIT_INTERVAL;
             }
             if let Some(s) = fold.packet(&p.slot, &p.data) {
                 states.push_back(p.at);
+                km_speed.add(km_engine.process(&s, p.at), p.at);
+                pad_speed.add(pad_engine.process(&s, p.at), p.at);
                 engine.process(&s, &mut msgs);
                 for (i, e) in osc_engines.iter_mut().enumerate() {
                     e.process(&s, fold.snap.battery.map(|b| b.level), p.at, &mut osc_msgs);
@@ -763,6 +792,15 @@ mod screenshot_data {
         let json = serde_json::json!({
             "preset": preset,
             "osc": { "destinations": dests, "presets": osc_presets, "builtin": osc::builtin_presets() },
+            "play": {
+                "setup": { "keymouse": play_setup.keymouse, "gamepad": play_setup.gamepad, "auto_switch": true, "mode": Mode::Desktop },
+                "presets": {
+                    "keymouse": layout::builtin_keymouse().iter().map(|l| serde_json::json!({ "name": l.name, "builtin": true })).collect::<Vec<_>>(),
+                    "gamepad": layout::builtin_gamepad().iter().map(|l| serde_json::json!({ "name": l.name, "builtin": true })).collect::<Vec<_>>(),
+                },
+                "builtin": { "keymouse": layout::builtin_keymouse(), "gamepad": layout::builtin_gamepad() },
+                "pad_previews": pad_previews,
+            },
             "frames": frames,
         });
         std::fs::write(output, json.to_string()).unwrap();

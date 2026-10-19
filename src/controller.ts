@@ -50,6 +50,8 @@ export interface Snapshot {
   midi: MidiStatus;
   /** OSC output state; like MIDI, it follows whatever this snapshot shows. */
   osc: OscStatus;
+  /** Keyboard & mouse and Gamepad output state; they follow this snapshot too. */
+  play: PlayStatus;
 }
 
 /** Mirrors `OutputChoice` in src-tauri/src/midi_out.rs. */
@@ -199,6 +201,151 @@ export interface OscStatus {
   destinations: OscDestinationStatus[];
   learning: boolean;
   learned: string | null;
+}
+
+/** The types below mirror src-tauri/src/layout.rs (layouts) and play_out.rs (config, status). */
+export type MouseButton = "left" | "right" | "middle" | "back" | "forward";
+export type Dir = "up" | "down" | "left" | "right";
+export type PadInput =
+  | "a" | "b" | "x" | "y" | "lb" | "rb" | "ls" | "rs" | "back" | "start" | "guide"
+  | "up" | "down" | "left" | "right" | "lt" | "rt";
+
+export type Action =
+  | { kind: "none" }
+  | { kind: "key"; keys: string[]; repeat: boolean }
+  | { kind: "mouse"; button: MouseButton }
+  | { kind: "scroll"; dir: Dir; repeat: boolean }
+  | { kind: "pad"; input: PadInput }
+  | { kind: "switch" };
+
+export interface Directions {
+  up: Action;
+  down: Action;
+  left: Action;
+  right: Action;
+}
+
+export type Side = "left" | "right";
+
+export type StickMode =
+  | { kind: "none" }
+  | { kind: "stick"; target: Side; deadzone: number }
+  | ({ kind: "directions"; threshold: number } & Directions)
+  | { kind: "mouse"; speed: number; deadzone: number }
+  | { kind: "scroll"; speed: number; deadzone: number };
+
+export type PadMode =
+  | { kind: "none" }
+  | { kind: "mouse"; speed: number; trackball: boolean }
+  | { kind: "scroll"; speed: number }
+  | { kind: "stick"; target: Side }
+  | ({ kind: "directions"; click: boolean } & Directions);
+
+export type GyroOutput = "none" | "mouse" | "stick" | "steer";
+export type Activation =
+  | { kind: "always" }
+  | { kind: "right_stick_touch" }
+  | { kind: "right_pad_touch" }
+  | { kind: "left_trigger" }
+  | { kind: "right_trigger" }
+  | { kind: "hold"; button: string }
+  | { kind: "toggle"; button: string };
+
+export interface Gyro {
+  output: GyroOutput;
+  activation: Activation;
+  axis: "auto" | "yaw" | "roll";
+  invert_y: boolean;
+  /** Mouse: pixels per degree turned. */
+  mouse_speed: number;
+  /** Stick: turn rate (°/s) for a full stick. */
+  stick_range: number;
+  /** Steer: lean (°) for full lock. */
+  steer_angle: number;
+}
+
+export interface Layout {
+  name: string;
+  /** Control name (`CONTROLS` in tabs/layout-editor.ts) to action; missing ones do nothing. */
+  buttons: Record<string, Action>;
+  left_stick: StickMode;
+  right_stick: StickMode;
+  left_pad: PadMode;
+  right_pad: PadMode;
+  gyro: Gyro;
+}
+
+export type PlayMode = "desktop" | "game";
+/** One of the three layouts: Keyboard & mouse for Desktop and for Game, and the Gamepad's. */
+export type PlaySlot = "desktop" | "game" | "pad";
+
+export interface KeyMouseConfig {
+  enabled: boolean;
+  desktop: Layout;
+  game: Layout;
+}
+
+export interface GamepadConfig {
+  enabled: boolean;
+  layout: Layout;
+}
+
+/** What `play_setup` returns. */
+export interface PlaySetup {
+  keymouse: KeyMouseConfig;
+  gamepad: GamepadConfig;
+  auto_switch: boolean;
+  mode: PlayMode;
+}
+
+export type PadSupport = { kind: "ready" } | { kind: "missing"; detail: string } | { kind: "unsupported" };
+
+/** The virtual Xbox controller's state, XInput ranges. */
+export interface PadState {
+  buttons: number;
+  lt: number;
+  rt: number;
+  lx: number;
+  ly: number;
+  rx: number;
+  ry: number;
+}
+
+export interface PlayStatus {
+  mode: PlayMode;
+  auto_switch: boolean;
+  /** The full-screen app auto switch sees, by file name. */
+  fullscreen_app: string | null;
+  /** The layout in play. */
+  active: PlaySlot | null;
+  keymouse: { enabled: boolean; supported: boolean; error: string | null };
+  gamepad: {
+    enabled: boolean;
+    /** null while being checked. */
+    support: PadSupport | null;
+    connected: boolean;
+    opening: boolean;
+    player: number | null;
+    error: string | null;
+    installing: boolean;
+    install_error: string | null;
+    /** Large and small motor, 0..255. */
+    rumble: [number, number];
+  };
+  /** The layout of the tab in view, live. */
+  preview: {
+    slot: PlaySlot | null;
+    pad: PadState;
+    keys: string[];
+    mouse_buttons: number;
+    /** px/s, x right, y down. */
+    mouse: [number, number];
+    /** Notches/s, x right, y up. */
+    scroll: [number, number];
+    gyro_active: boolean;
+    /** Bit per control in use (`CONTROLS` index, then the sticks, pads and gyro). */
+    lit: number;
+  };
 }
 
 /** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */
