@@ -25,6 +25,12 @@ export interface GraphOptions {
 }
 
 const SAMPLES = 300; // 5 s at 60 snapshots per second
+/**
+ * Redraw on every second sample (30 per second). In WebView2 each frame the page shows costs CPU
+ * however little changed; a graph redrawn 60 times a second took ~25% of a core, mostly in
+ * compositing rather than drawing the lines.
+ */
+const DRAW_EVERY = 2;
 
 export class LiveGraph {
   private canvas: HTMLCanvasElement;
@@ -32,6 +38,7 @@ export class LiveGraph {
   private data: Float32Array[];
   private head = 0;
   private filled = 0;
+  private pushes = 0;
   private hoverX: number | null = null;
 
   constructor(container: HTMLElement, private opts: GraphOptions) {
@@ -61,7 +68,7 @@ export class LiveGraph {
     values.forEach((v, i) => (this.data[i][this.head] = v));
     this.head = (this.head + 1) % SAMPLES;
     this.filled = Math.min(this.filled + 1, SAMPLES);
-    this.draw();
+    if (++this.pushes % DRAW_EVERY === 0) this.draw();
   }
 
   /** Sample `i` positions back from the newest (0 = newest). */

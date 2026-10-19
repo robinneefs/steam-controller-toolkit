@@ -1,4 +1,5 @@
 import { pressed, type ButtonName, type ControllerState, type Snapshot, type Trackpad } from "../controller";
+import { setAttr, setHtml, setText } from "../dom";
 import { Controller3D } from "./controller3d";
 import { LiveGraph } from "./graph";
 import type { Tab } from "./tab";
@@ -8,6 +9,8 @@ const AXIS = 32768;
 const ACCEL_PER_G = 16384;
 const GYRO_PER_DPS = 32768 / 2000;
 const SVG = "http://www.w3.org/2000/svg";
+/** Smallest stick dot move worth drawing, in gauge units (92 across, ~1 px each). */
+const MIN_MOVE = 0.5;
 
 const TOUCH_SENSORS: [ButtonName, string][] = [
   ["LeftGripTouch", "L grip"], ["RightGripTouch", "R grip"],
@@ -149,7 +152,7 @@ export class VisualizerTab implements Tab {
 
   update(snap: Snapshot): void {
     this.root.classList.toggle("disconnected", !snap.state);
-    this.q("[data-conn]").textContent = snap.tape.playback ? "Replaying recording" : snap.state ? "Connected" : "Searching for controller…";
+    setText(this.q("[data-conn]"), snap.tape.playback ? "Replaying recording" : snap.state ? "Connected" : "Searching for controller…");
     if (snap.state) this.render(snap.state);
   }
 
@@ -168,12 +171,12 @@ export class VisualizerTab implements Tab {
     const lock = this.q("[data-lock]");
     const rotating = this.view.rotating;
     lock.classList.toggle("free", rotating);
-    this.q("[data-lock-text]").textContent = rotating ? "Rotating with controller" : "Front view locked";
+    setText(this.q("[data-lock-text]"), rotating ? "Rotating with controller" : "Front view locked");
     this.q("[data-rt-fill]").style.width = `${(s.trigger_right / 32767) * 100}%`;
 
     const a = this.view.angles();
     for (const k of ["pitch", "roll", "yaw"] as const) {
-      this.q(`[data-angle="${k}"]`).innerHTML = s.imu.quat ? `${Math.round(a[k]) || 0}<small>°</small>` : "–";
+      setHtml(this.q(`[data-angle="${k}"]`), s.imu.quat ? `${Math.round(a[k]) || 0}<small>°</small>` : "–");
     }
 
     this.graphs.gyro.push(s.imu.gyro.map((v) => v / GYRO_PER_DPS));
@@ -187,7 +190,7 @@ export class VisualizerTab implements Tab {
       el.classList.toggle("on", on);
       if (on) held++;
     });
-    this.q("[data-held]").textContent = held ? `${held} held` : "";
+    setText(this.q("[data-held]"), held ? `${held} held` : "");
     this.root.querySelectorAll<HTMLElement>("[data-touch]").forEach((el) => {
       el.classList.toggle("on", pressed(s, el.dataset.touch as ButtonName));
     });
@@ -252,6 +255,8 @@ class Stick {
   private well: SVGElement;
   private line: SVGElement;
   private dot: SVGElement;
+  private cx = 46;
+  private cy = 46;
 
   constructor(fig: HTMLElement) {
     const el = gaugeSvg(fig);
@@ -263,12 +268,16 @@ class Stick {
   }
 
   set([x, y]: [number, number], touched: boolean, click: boolean): void {
+    // A resting stick jitters by ~0.4% (0.1 px here); move the dot only for more than that.
     const cx = 46 + (x / AXIS) * 34;
     const cy = 46 - (y / AXIS) * 34;
-    this.dot.setAttribute("cx", cx.toFixed(1));
-    this.dot.setAttribute("cy", cy.toFixed(1));
-    this.line.setAttribute("x2", cx.toFixed(1));
-    this.line.setAttribute("y2", cy.toFixed(1));
+    if (Math.abs(cx - this.cx) >= MIN_MOVE || Math.abs(cy - this.cy) >= MIN_MOVE) {
+      [this.cx, this.cy] = [cx, cy];
+      setAttr(this.dot, "cx", cx.toFixed(1));
+      setAttr(this.dot, "cy", cy.toFixed(1));
+      setAttr(this.line, "x2", cx.toFixed(1));
+      setAttr(this.line, "y2", cy.toFixed(1));
+    }
     this.well.classList.toggle("touched", touched);
     this.dot.classList.toggle("click", click);
   }
@@ -289,9 +298,10 @@ class Pad {
   set(p: Trackpad): void {
     this.area.classList.toggle("touched", p.touched);
     this.dot.style.visibility = p.touched ? "visible" : "hidden";
-    this.dot.setAttribute("cx", (46 + (p.x / AXIS) * 36).toFixed(1));
-    this.dot.setAttribute("cy", (46 - (p.y / AXIS) * 36).toFixed(1));
-    this.dot.setAttribute("r", (7 + Math.min(p.pressure, 30000) / 3000).toFixed(1));
+    if (!p.touched) return void this.dot.classList.toggle("click", false);
+    setAttr(this.dot, "cx", (46 + (p.x / AXIS) * 36).toFixed(1));
+    setAttr(this.dot, "cy", (46 - (p.y / AXIS) * 36).toFixed(1));
+    setAttr(this.dot, "r", (7 + Math.min(p.pressure, 30000) / 3000).toFixed(1));
     this.dot.classList.toggle("click", p.clicked);
   }
 }

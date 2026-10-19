@@ -2,6 +2,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./controller";
+import { setAttr, setHidden, setText } from "./dom";
 import { controlPlayback, formatTime, importRecordings, playRecording, startRecording, stopRecording } from "./tape";
 import { AboutTab } from "./tabs/about";
 import { HapticsTab } from "./tabs/haptics";
@@ -153,10 +154,10 @@ function setDot(id: string, kind: "" | "ok" | "rec" | "play", note: string): voi
   const b = nav.querySelector<HTMLElement>(`[data-tab="${id}"]`);
   const dot = b?.querySelector<HTMLElement>(".dot");
   if (!b || !dot) return;
-  dot.hidden = !kind;
-  dot.className = `dot ${kind}`;
-  if (note) b.dataset.note = note;
-  else delete b.dataset.note;
+  setHidden(dot, !kind);
+  setAttr(dot, "class", `dot ${kind}`);
+  if (note) setAttr(b, "data-note", note);
+  else if (b.hasAttribute("data-note")) b.removeAttribute("data-note");
 }
 function renderDots(snap: Snapshot): void {
   setDot("midi", snap.midi.connected ? "ok" : "", snap.midi.connected ? `Sending to ${snap.midi.connected}` : "");
@@ -207,11 +208,10 @@ record.addEventListener("click", async () => {
 });
 function renderRecord(snap: Snapshot): void {
   const r = snap.tape.recording;
-  record.hidden = !r && (!snap.state || !!snap.tape.playback);
+  setHidden(record, !r && (!snap.state || !!snap.tape.playback));
   record.classList.toggle("on", !!r);
-  record.title = r ? `Recording to ${r.name}. Click to stop` : "Record live input (see the Recorder tab)";
-  const time = r ? formatTime(r.seconds) : "";
-  if (recordTime.textContent !== time) recordTime.textContent = time;
+  setAttr(record, "title", r ? `Recording to ${r.name}. Click to stop` : "Record live input (see the Recorder tab)");
+  setText(recordTime, r ? formatTime(r.seconds) : "");
 }
 
 // Warn while Steam is running; a dismissal lasts until Steam is closed and reopened.
@@ -224,7 +224,7 @@ steamWarning.querySelector("[data-dismiss]")!.addEventListener("click", () => {
 
 function renderSteamWarning(snap: Snapshot): void {
   if (!snap.steam_running) steamWarningDismissed = false;
-  steamWarning.hidden = !snap.steam_running || steamWarningDismissed;
+  setHidden(steamWarning, !snap.steam_running || steamWarningDismissed);
 }
 
 // Power off: the first click arms the button, a second click within 3 s sends the command.
@@ -305,7 +305,7 @@ onSnapshot((snap) => {
   if (document.hidden) return;
   renderStatus(snap);
   // During playback the state is the recording's; there is no live controller to turn off.
-  power.hidden = !snap.state || !!snap.tape.playback;
+  setHidden(power, !snap.state || !!snap.tape.playback);
   renderRecord(snap);
   renderSteamWarning(snap);
   renderDots(snap);

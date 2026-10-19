@@ -90,7 +90,7 @@ export class Controller3D {
   private grab: THREE.Quaternion | null = null;
   private target = FRONT.clone();
   private lastDrawnQuat = new THREE.Quaternion(NaN, NaN, NaN, NaN);
-  private lastInputs = "";
+  private lastInputs: number[] = [];
   private needsRecenter = true;
   private needsDraw = true;
   private ready = false;
@@ -169,11 +169,11 @@ export class Controller3D {
     }
     this.model.quaternion.slerp(this.target, EASE);
 
-    // Draw only when something visible changed. Sensor noise moves the quaternion by ~1e-5;
-    // the threshold (about 0.1°) ignores that while still tracking any real motion.
-    const inputs = inputSignature(s);
+    // Draw only when something visible changed. Sensor noise moves the quaternion by ~1e-5 and
+    // the sticks by ~0.4%; the thresholds (about 0.1°, 1%) ignore that but track real motion.
+    const inputs = inputValues(s);
     const moved = Math.abs(this.model.quaternion.dot(this.lastDrawnQuat)) < 0.9999995;
-    if (!moved && inputs === this.lastInputs && !this.needsDraw) return;
+    if (!moved && !inputsMoved(inputs, this.lastInputs) && !this.needsDraw) return;
     this.lastDrawnQuat.copy(this.model.quaternion);
     this.lastInputs = inputs;
     this.needsDraw = false;
@@ -344,12 +344,26 @@ function pivotFor(name: string, box: THREE.Box3): THREE.Vector3 {
 }
 
 /** Cheap fingerprint of everything that changes what the parts look like. */
-function inputSignature(s: ControllerState): string {
-  const q = (v: number) => v >> 7; // ignore sub-percent noise
+/** The inputs the model shows: buttons first, then the analog values. */
+function inputValues(s: ControllerState): number[] {
   return [
-    s.buttons, q(s.trigger_left), q(s.trigger_right), ...s.left_stick.map(q), ...s.right_stick.map(q),
-    q(s.left_pad.x), q(s.left_pad.y), q(s.left_pad.pressure), q(s.right_pad.x), q(s.right_pad.y), q(s.right_pad.pressure),
-  ].join(",");
+    s.buttons, s.trigger_left, s.trigger_right, ...s.left_stick, ...s.right_stick,
+    s.left_pad.x, s.left_pad.y, s.left_pad.pressure, s.right_pad.x, s.right_pad.y, s.right_pad.pressure,
+  ];
+}
+
+/** Analog change worth a frame: ~1% of full scale (a stick tilts 0.1° for it). */
+const ANALOG_STEP = 330;
+
+/**
+ * Whether the inputs moved since the last drawn frame. Analog values are compared with the
+ * values last drawn, not rounded into buckets: a resting stick jitters by ~0.4%, which crossed a
+ * bucket edge on most reports and redrew the view ~50 times a second while nothing moved.
+ */
+function inputsMoved(now: number[], drawn: number[]): boolean {
+  if (now[0] !== drawn[0]) return true;
+  for (let i = 1; i < now.length; i++) if (!(Math.abs(now[i] - drawn[i]) < ANALOG_STEP)) return true;
+  return false;
 }
 
 /** Debug aid (#demo in the URL): cycles every input so the part motions can be checked. */

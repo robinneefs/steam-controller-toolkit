@@ -92,8 +92,16 @@ without the user asking: a `v*` tag makes CI draft a release.
   `document.hidden` then) and its tab (`set_tab` from `main.ts`): `forward_events` emits nothing
   while hidden, and an output that is off skips its engine unless its tab is in view
   (`outputs::Watched`; meters and Learn need it). Measured on Windows: tray ~1.6% of a core and
-  30 MB; minimised ~3%; open on the Visualizer ~40% (the 3D view redraws on gyro noise).
+  30 MB; minimised ~3%; open: ~10% on a still tab, ~25% on the Visualizer, ~50% on Raw data.
   New outputs must follow the same rule: no per-report work while off and unwatched.
+- **UI cost with the window open**: in WebView2 every frame the page shows costs CPU however
+  little changed (~11% of a core for a 4 px box moving 60 times a second), and so does every DOM
+  write, even of an unchanged value. So: per-snapshot writes go through `src/dom.ts`
+  (`setText`/`setAttr`/`setHidden`, only what changed); live views skip changes below what's
+  visible (sticks jitter ~0.4% at rest: `inputsMoved` in `controller3d.ts`, `MIN_MOVE` in
+  `visualizer.ts`); `LiveGraph` redraws every 2nd sample. Measure with the remote-debugging port
+  (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`), summing CPU time of the
+  app and its msedgewebview2 children.
 - **`src/`**: `main.ts` builds the sidebar from the `tabs` array (grouped by `group`); each tab implements `Tab` in
   `src/tabs/tab.ts`. `src/controller.ts` mirrors the Rust types and must be kept in sync with
   `crates/sc-core/src/protocol.rs` and `Snapshot` in `src-tauri/src/lib.rs`.

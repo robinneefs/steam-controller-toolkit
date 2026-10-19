@@ -38,6 +38,11 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 - A minimised window now costs almost nothing: about 3% of one CPU core, down from about 45%,
   because the app stops updating it. MIDI and OSC also do no work while they're off, unless
   their tab is open.
+- The open window uses less CPU. The Visualizer went from about 42% to 25% of one core: its
+  motion graph redraws 30 times a second (was 60), and the 3D view no longer redraws when the
+  sticks merely jitter at rest (it drew ~50 frames a second of a still controller). Every tab
+  saves about a third of its baseline, because the top bar and sidebar no longer rewrite unchanged
+  values on every update.
 - Starting the app again while it runs (say from the Start menu while it sits in the tray) opens
   its window instead of a second copy.
 - Quitting lets go of held MIDI notes and OSC buttons.
