@@ -1,5 +1,5 @@
 // Takes the README screenshots (docs/screenshots) with headless Edge or Chrome: the real UI at
-// the default 1100 x 720 window, 1.5x, fed a real recording by mock.js. See README.md here.
+// the default 1280 x 720 window, 1.5x, fed a real recording by mock.js. See README.md here.
 // Usage: node tools/screenshots/take.mjs [base url]   (default http://localhost:1420, `npm run dev`)
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -39,7 +39,7 @@ for (const [name, params] of Object.entries(SHOTS)) {
   execFileSync(browser, [
     "--headless=new",
     `--user-data-dir=${profile}`,
-    "--window-size=1100,720",
+    "--window-size=1280,720",
     "--force-device-scale-factor=1.5",
     "--hide-scrollbars",
     // Software WebGL for the 3D view.

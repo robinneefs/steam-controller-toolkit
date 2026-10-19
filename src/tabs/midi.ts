@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { MidiMapping, MidiOutputChoice, MidiPreset, MidiScale, MidiTarget, PadGrid, Snapshot } from "../controller";
 import { addHelp, helpIcon } from "../help";
 import type { Tab } from "./tab";
+import { ICONS } from "./icons";
 
 addHelp({
   "midi-output": `<b>Output</b> is the MIDI port the controller's messages go to. In your DAW, pick the same port
@@ -307,6 +308,8 @@ function guideHtml(v: VirtualSupport, ports: string[]): string {
 export class MidiTab implements Tab {
   id = "midi";
   title = "MIDI";
+  group = "output" as const;
+  icon = ICONS.midi;
   private root!: HTMLElement;
   private preset: MidiPreset | null = null;
   private output: MidiOutputChoice = { kind: "off" };
@@ -739,7 +742,7 @@ export class MidiTab implements Tab {
     const args =
       t.kind === "cc"
         ? `<input class="field num" type="number" data-f="cc" min="0" max="127" value="${t.cc}" title="Controller number (0–127)" />
-           <label class="chk" title="14-bit: also sends CC ${t.cc + 32} for finer steps (CC 0–31 only)"><input type="checkbox" data-f="hi_res" ${t.hi_res ? "checked" : ""} ${t.cc < 32 ? "" : "disabled"} />14-bit</label>`
+           <label class="chk" title="14-bit: also sends CC ${t.cc + 32} for finer steps (CC 0–31 only)"><input type="checkbox" data-f="hi_res" ${t.hi_res ? "checked" : ""} ${t.cc < 32 ? "" : "disabled"} /><span>14-bit</span></label>`
         : t.kind === "note"
           ? `<select class="field" data-f="note" title="Note">${NOTE_OPTIONS}</select>
              <input class="field num" type="number" data-f="velocity" min="1" max="127" value="${t.velocity}" title="Velocity (1–127)" />`

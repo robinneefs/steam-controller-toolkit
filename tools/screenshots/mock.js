@@ -88,7 +88,7 @@
         if (i >= last) clearInterval(timer);
         if (!clicked && listeners.controller) {
           clicked = true;
-          document.querySelector(`#tabs button[data-tab="${params.get("tab") ?? "visualizer"}"]`)?.click();
+          document.querySelector(`.sidebar button[data-tab="${params.get("tab") ?? "visualizer"}"]`)?.click();
           if (params.get("guide") === "1") setTimeout(() => document.querySelector("[data-guide]")?.click(), 500);
         }
         i++;

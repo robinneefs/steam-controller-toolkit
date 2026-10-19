@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { hex, type Haptic, type Snapshot } from "../controller";
 import type { Tab } from "./tab";
+import { ICONS } from "./icons";
 
 /** Values of the `side` field (verified by hand; 3 and up play nothing). */
 const SIDES: [string, number][] = [["Left", 0], ["Right", 1], ["Both", 2]];
@@ -48,6 +49,8 @@ const slider = (s: Slider) => `
 export class HapticsTab implements Tab {
   id = "haptics";
   title = "Haptics";
+  group = "tools" as const;
+  icon = ICONS.haptics;
   private root!: HTMLElement;
   private slot: string | null = null;
   private side = SIDES[2][1];

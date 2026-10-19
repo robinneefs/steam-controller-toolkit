@@ -9,28 +9,34 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <header class="topbar">
+    <aside class="sidebar">
       <div class="brand"><img src="/logo.png" alt="" /><span>Steam Controller<br />Toolkit</span></div>
-      <nav id="tabs" class="tabs"></nav>
-      <div id="replay" class="replay"></div>
-      <div id="status" class="status">Searching for controller…</div>
-      <button id="record" class="record" hidden title="Record live input"><i></i><span class="num"></span></button>
-      <button id="power" class="power" hidden title="Turn off the controller">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
-        <span data-power-label></span>
-      </button>
-    </header>
-    <main id="tab-content"></main>
-    <footer class="statusbar">
-      <div id="steam-warning" class="steam-warning" hidden>
-        <span class="warn-icon">▲</span>
-        <span class="warn-text" title="Steam is running. Its Desktop Layout turns the controller into a mouse and keyboard. Close Steam, or clear Steam → Settings → Controller → Desktop Layout.">
-          <b>Steam is running.</b> Its Desktop Layout turns the controller into a mouse and keyboard.
-          Close Steam, or clear Steam → Settings → Controller → Desktop Layout.
-        </span>
-        <button data-dismiss title="Hide until Steam is restarted">×</button>
-      </div>
-      <div id="footer-info" class="footer-info"></div>
-    </footer>
+      <nav id="tabs" class="nav"></nav>
+      <div id="nav-foot" class="nav nav-foot"></div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1 id="tab-title" class="tab-title"></h1>
+        <div id="replay" class="replay"></div>
+        <div id="status" class="status">Searching for controller…</div>
+        <button id="record" class="record" hidden title="Record live input"><i></i><span class="num"></span></button>
+        <button id="power" class="power" hidden title="Turn off the controller">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
+          <span data-power-label></span>
+        </button>
+      </header>
+      <main id="tab-content"></main>
+      <footer class="statusbar">
+        <div id="steam-warning" class="steam-warning" hidden>
+          <span class="warn-icon">▲</span>
+          <span class="warn-text" title="Steam is running. Its Desktop Layout turns the controller into a mouse and keyboard. Close Steam, or clear Steam → Settings → Controller → Desktop Layout.">
+            <b>Steam is running.</b> Its Desktop Layout turns the controller into a mouse and keyboard.
+            Close Steam, or clear Steam → Settings → Controller → Desktop Layout.
+          </span>
+          <button data-dismiss title="Hide until Steam is restarted">×</button>
+        </div>
+        <div id="footer-info" class="footer-info"></div>
+      </footer>
+    </div>
   </body>
 </html>

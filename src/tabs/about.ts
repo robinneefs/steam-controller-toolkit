@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Tab } from "./tab";
+import { ICONS } from "./icons";
 
 const REPO = "https://github.com/robinneefs/steam-controller-toolkit";
 const MODEL = "https://sketchfab.com/3d-models/steam-machine-controller-c1fcf77d71984c11818a5e2412816705";
@@ -12,6 +13,8 @@ const MODEL = "https://sketchfab.com/3d-models/steam-machine-controller-c1fcf77d
 export class AboutTab implements Tab {
   id = "about";
   title = "About";
+  group = "app" as const;
+  icon = ICONS.about;
 
   mount(root: HTMLElement): void {
     root.innerHTML = `

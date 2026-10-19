@@ -19,6 +19,8 @@
   --series-1: #1a9fff;
   --series-2: #ffb547;
   --series-3: #c18cff;
+  /* Sidebar width: labels, or icons only (collapsed, or below 1100 px). */
+  --side-w: 208px;
   color-scheme: dark;
   font-family: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
@@ -30,8 +32,8 @@
 html, body { height: 100%; overflow: hidden; }
 body {
   margin: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr);
   background:
     radial-gradient(90% 70% at 30% 0%, #1f3550 0%, transparent 60%),
     radial-gradient(70% 60% at 100% 100%, #2a1f45 0%, transparent 60%),
@@ -85,29 +87,60 @@ button, a { cursor: pointer; }
 a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* ---------- Sidebar ---------- */
+
+/* Tabs grouped down the left, so new tabs never crowd the top bar. Labels from 1100 px; below that,
+   or when collapsed (main.ts remembers it), icons only, with the name shown on hover. */
+.sidebar { min-height: 0; display: flex; flex-direction: column; padding: 14px 12px 12px; border-right: 1px solid #ffffff1f; background: #070b12b3; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 16px; font-weight: 700; font-size: 13px; line-height: 1.15; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.brand img { flex: none; width: 36px; height: 36px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+#tabs { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.nav h4 { margin: 12px 10px 6px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.nav h4:first-child { margin-top: 2px; }
+.nav-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.nav-item { position: relative; flex: none; display: flex; align-items: center; gap: 11px; width: 100%; height: 38px; padding: 0 11px; border: 0; border-radius: 12px; background: none; color: var(--muted); font-size: 14.5px; font-weight: 600; text-align: left; white-space: nowrap; cursor: pointer; }
+.nav-item svg { flex: none; width: 19px; height: 19px; }
+.nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nav-item:hover { color: var(--text); background: #ffffff0d; }
+.nav-item.active { background: var(--text); color: var(--bg); }
+.nav-item .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.nav-item .dot[hidden] { display: none; }
+.nav-item .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px #5fe39a26; }
+.nav-item .dot.play { background: var(--accent); box-shadow: 0 0 0 3px #1a9fff2e; }
+.nav-item .dot.rec { background: var(--rec); box-shadow: 0 0 0 3px #ff5a5a26; animation: rec-pulse 1.2s ease-in-out infinite; }
+.nav-item.active .dot { box-shadow: none; }
+.nav-item.collapse svg { transition: transform 0.15s; }
+.nav-collapsed .nav-item.collapse svg { transform: rotate(180deg); }
+.nav-tip { position: fixed; z-index: 30; padding: 6px 11px; border: 1px solid var(--line); border-radius: 10px; background: #1b2738; box-shadow: 0 8px 24px #0008; color: var(--text); font-weight: 600; white-space: nowrap; pointer-events: none; transform: translateY(-50%); }
+.nav-tip[hidden] { display: none; }
+.nav-tip em { margin-left: 4px; color: var(--muted); font-style: normal; font-weight: 500; }
+/* Icons only. Keep the two copies of these rules the same. */
+.nav-collapsed { --side-w: 68px; }
+.nav-collapsed .sidebar { padding-left: 10px; padding-right: 10px; }
+.nav-collapsed .brand { justify-content: center; padding: 2px 0 16px; }
+.nav-collapsed .brand span, .nav-collapsed .nav-item .label { display: none; }
+.nav-collapsed .nav h4 { height: 1px; margin: 9px 8px; overflow: hidden; color: transparent; background: var(--line); }
+.nav-collapsed .nav h4:first-child { display: none; }
+.nav-collapsed .nav-item { justify-content: center; padding: 0; }
+.nav-collapsed .nav-item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
+@media (max-width: 1099px) {
+  :root { --side-w: 68px; }
+  .sidebar { padding-left: 10px; padding-right: 10px; }
+  .brand { justify-content: center; padding: 2px 0 16px; }
+  .brand span, .nav-item .label { display: none; }
+  .nav h4 { height: 1px; margin: 9px 8px; overflow: hidden; color: transparent; background: var(--line); }
+  .nav h4:first-child { display: none; }
+  .nav-item { justify-content: center; padding: 0; }
+  .nav-item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
+  .nav-item.collapse { display: none; }
+}
+
 /* ---------- Top bar ---------- */
 
-.topbar { display: flex; align-items: center; gap: 18px; padding: 14px 24px 10px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 13px; line-height: 1.15; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
-.brand img { width: 36px; height: 36px; }
-/* Near the minimum window size the logo alone has to do, or the top bar would not fit. */
-@media (max-width: 1099px) { .brand span { display: none; } .topbar { gap: 12px; } .status { gap: 10px; } }
-.tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #00000040; border: 1px solid var(--line); }
-.tabs button {
-  white-space: nowrap;
-  padding: 7px 14px;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  color: var(--muted);
-  font-weight: 600;
-  cursor: pointer;
-}
-.tabs button:hover { color: var(--text); }
-.tabs button.active { background: var(--text); color: var(--bg); }
-/* Six tabs plus a recording and a replay only just fit the default 1100 px window. */
-@media (max-width: 1199px) { .tabs button { padding: 7px 10px; } }
-@media (min-width: 1100px) and (max-width: 1199px) { .topbar { gap: 14px; } }
+.main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; gap: 16px; min-height: 62px; padding: 14px 24px 10px; }
+.tab-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; }
 /* Replay pill: anchored after the tabs so the status and buttons on the right can change without moving it. */
 .replay { flex: none; display: flex; white-space: nowrap; }
 .replay:empty { display: none; }
@@ -177,7 +210,8 @@ a:hover { text-decoration: underline; }
 .power span:empty { display: none; }
 .power.armed span, .power.error span { border-color: #ff6b6b88; color: #ffb3b3; }
 
-#tab-content { flex: 1; min-height: 0; padding: 6px 24px 16px; }
+/* Tabs size themselves to this box, not the window (the sidebar takes 68 or 208 px): use @container tab. */
+#tab-content { flex: 1; min-height: 0; padding: 6px 24px 16px; container: tab / inline-size; }
 .pane { height: 100%; }
 
 /* ---------- Footer ---------- */
@@ -594,7 +628,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .midi-bar [data-output] { width: auto; min-width: 140px; max-width: 250px; }
 .midi-bar .mini, .midi-bar .icon-btn { flex: none; white-space: nowrap; }
 .midi-conn { min-width: 12px; }
-@media (max-width: 1099px) { .midi-bar [data-output] { max-width: 170px; } .midi-bar { gap: 8px; } }
+@container tab (max-width: 1050px) { .midi-bar [data-output] { max-width: 170px; } .midi-bar { gap: 8px; } }
+
 .midi-bar [data-preset], .midi-bar [data-save-name] { width: 170px; }
 .preset-group { margin-left: auto; }
 .preset-group [hidden] { display: none; }
@@ -722,7 +757,13 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .grid-form .field.num { width: 46px; }
 .grid-form .segmented button { padding: 2px 9px; }
 .grid-form label.chk { justify-content: flex-start; }
-
+/* A window of 1100-1279 px with labels in the sidebar leaves the tabs ~850 px: a narrower side column keeps the mapping rows whole. */
+@container tab (max-width: 900px) {
+  .midi { grid-template-columns: minmax(0, 1fr) 324px; }
+  .grid-body { grid-template-columns: 96px minmax(0, 1fr); }
+  .map-head, .map-main { grid-template-columns: 16px minmax(96px, 1.2fr) 26px 88px minmax(80px, 1fr) 50px 26px 26px; }
+  .map-main .chk span { display: none; }
+}
 .midi-log { display: flex; flex-direction: column; min-height: 120px; flex: 1 1 0 !important; }
 .log { flex: 1; min-height: 0; overflow: hidden; font: 12px/1.65 ui-monospace, "Cascadia Mono", Consolas, monospace; }
 .log .hint { font: 12.5px/1.4 "Barlow", system-ui, sans-serif; }

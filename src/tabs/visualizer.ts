@@ -2,6 +2,7 @@ import { pressed, type ButtonName, type ControllerState, type Snapshot, type Tra
 import { Controller3D } from "./controller3d";
 import { LiveGraph } from "./graph";
 import type { Tab } from "./tab";
+import { ICONS } from "./icons";
 
 const AXIS = 32768;
 const ACCEL_PER_G = 16384;
@@ -37,6 +38,8 @@ type GraphId = (typeof GRAPHS)[number][0];
 export class VisualizerTab implements Tab {
   id = "visualizer";
   title = "Visualizer";
+  group = "input" as const;
+  icon = ICONS.visualizer;
   private root!: HTMLElement;
   private view!: Controller3D;
   private graphs!: Record<GraphId, LiveGraph>;

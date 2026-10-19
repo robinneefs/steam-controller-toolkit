@@ -3,6 +3,7 @@ import {
   type ButtonName, type ControllerState, type Snapshot, type Trackpad,
 } from "../controller";
 import type { Tab } from "./tab";
+import { ICONS } from "./icons";
 
 /** How long a changed byte stays highlighted in the byte map. */
 const BYTE_HIGHLIGHT_MS = 400;
@@ -52,6 +53,8 @@ const label = (n: ButtonName) => LABELS[n] ?? n;
 export class RawTab implements Tab {
   id = "raw";
   title = "Raw data";
+  group = "input" as const;
+  icon = ICONS.raw;
   private root!: HTMLElement;
   private cells = new Map<string, HTMLElement>();
   private byteChangedAt: number[] = [];

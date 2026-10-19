@@ -7,6 +7,13 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 
 ## [Unreleased]
 
+### Changed
+
+- The tabs moved from the top bar to a sidebar, grouped as Input, Output and Tools, so new tools
+  have room. It shows names from 1100 px wide and icons only below that (hover for the name);
+  Collapse picks icons at any size. Dots show MIDI sending and the Recorder recording or replaying.
+- The window now opens at 1280 x 720 (was 1100 x 720).
+
 ## [0.2.1] - 2026-10-19
 
 ### Changed

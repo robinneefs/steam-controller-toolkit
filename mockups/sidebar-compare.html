@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sidebar styles compared</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #06080c; color: #c9d3de; font: 500 14px "Barlow", system-ui, sans-serif; }
+  .picker { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 12px 24px; background: #06080cf2; border-bottom: 1px solid #ffffff14; }
+  .picker > b { color: #fff; font-size: 15px; margin-right: 6px; }
+  .picker a { color: #66c0f4; text-decoration: none; margin-left: auto; }
+  .group { display: flex; align-items: center; gap: 6px; }
+  .group > span { color: #8ea0b4; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; }
+  .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #ffffff0a; border: 1px solid #ffffff14; }
+  .seg button, .chk { font: 600 13px "Barlow"; color: #8ea0b4; background: none; border: 0; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+  .seg button.on { background: #eef3f8; color: #0f1622; }
+  .chk { border: 1px solid #ffffff14; }
+  .chk.on { color: #eef3f8; border-color: #1a9fff88; background: #1a9fff22; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; padding: 16px; }
+  figure { margin: 0; min-width: 0; }
+  .clip { overflow: hidden; border-radius: 10px; box-shadow: 0 30px 80px #000c, 0 0 0 1px #ffffff1a; }
+  figcaption { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; color: #8ea0b4; }
+  figcaption b { color: #fff; font-size: 16px; }
+  iframe { display: block; width: 100%; border: 0; background: #0f1622; }
+</style>
+</head>
+<body>
+<div class="picker">
+  <b>Panel vs Floating</b>
+  <div class="group"><span>Window</span><div class="seg" data-pick="size">
+    <button data-v="1100x720" class="on">1100 × 720 default</button><button data-v="960x640">960 × 640 minimum</button><button data-v="1440x900">1440 × 900</button>
+  </div></div>
+  <div class="group"><span>Sidebar</span><div class="seg" data-pick="nav">
+    <button data-v="auto" class="on">Auto</button><button data-v="expanded">Labels</button><button data-v="rail">Icons</button>
+  </div></div>
+  <div class="group"><span>View</span><div class="seg" data-pick="zoom">
+    <button data-v="fit" class="on">Whole window</button><button data-v="side">Sidebar at 100%</button>
+  </div></div>
+  <div class="group"><span>State</span>
+    <button class="chk on" data-toggle="recording">Recording</button>
+    <button class="chk on" data-toggle="replay">Replay</button>
+    <button class="chk" data-toggle="steam">Steam warning</button>
+  </div>
+  <a href="sidebar.html">Single view with notes →</a>
+</div>
+<div class="pair">
+  <figure><figcaption><b>Panel</b>Full-height strip with a divider, like a classic app sidebar.</figcaption><div class="clip"><iframe data-style="panel" title="Panel style"></iframe></div></figure>
+  <figure><figcaption><b>Floating</b>An inset rounded card, the same shape as the tiles.</figcaption><div class="clip"><iframe data-style="floating" title="Floating style"></iframe></div></figure>
+</div>
+<script>
+  const state = { size: "1100x720", nav: "auto", recording: true, replay: true, steam: false, zoom: "fit" };
+  const load = () => frames.forEach((f) => (f.src = `sidebar.html?bare&style=${f.dataset.style}${state.zoom === "side" ? "&zoom" : ""}`));
+  const frames = [...document.querySelectorAll("iframe")];
+  const send = (patch) => frames.forEach((f) => f.contentWindow?.postMessage({ mockState: patch }, "*"));
+
+  function sizeFrames() {
+    const [w, h] = state.size.split("x").map(Number);
+    const zoom = state.zoom === "side";
+    document.body.classList.toggle("zoomed", zoom);
+    for (const f of frames) {
+      f.style.width = zoom ? w + "px" : "100%";
+      f.style.height = zoom ? h + "px" : (f.clientWidth * h) / w + "px";
+    }
+  }
+  function render() {
+    document.querySelectorAll("[data-pick]").forEach((g) => g.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === state[g.dataset.pick])));
+    document.querySelectorAll("[data-toggle]").forEach((b) => b.classList.toggle("on", state[b.dataset.toggle]));
+    sizeFrames();
+    send({ ...state, zoom: undefined });
+  }
+  document.querySelectorAll("[data-pick]").forEach((g) => g.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const reload = g.dataset.pick === "zoom" && state.zoom !== b.dataset.v;
+    state[g.dataset.pick] = b.dataset.v; render();
+    if (reload) load();
+  }));
+  document.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => { state[b.dataset.toggle] = !state[b.dataset.toggle]; render(); }));
+  // A tab or collapse click in one window shows in both.
+  addEventListener("message", (e) => {
+    if (!e.data?.mockState) return;
+    Object.assign(state, e.data.mockState);
+    render();
+  });
+  frames.forEach((f) => f.addEventListener("load", () => f.contentWindow.postMessage({ mockState: state }, "*")));
+  load();
+  new ResizeObserver(sizeFrames).observe(document.querySelector(".pair"));
+  render();
+</script>
+</body>
+</html>

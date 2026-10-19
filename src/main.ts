@@ -8,7 +8,8 @@ import { HapticsTab } from "./tabs/haptics";
 import { MidiTab } from "./tabs/midi";
 import { RawTab } from "./tabs/raw";
 import { RecorderTab } from "./tabs/recorder";
-import type { Tab } from "./tabs/tab";
+import { ICONS } from "./tabs/icons";
+import type { Tab, TabGroup } from "./tabs/tab";
 import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
@@ -16,6 +17,8 @@ const recorder = new RecorderTab();
 const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new RawTab(), recorder, new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
+const navFoot = document.querySelector<HTMLElement>("#nav-foot")!;
+const tabTitle = document.querySelector<HTMLElement>("#tab-title")!;
 const content = document.querySelector<HTMLElement>("#tab-content")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const replayEl = document.querySelector<HTMLElement>("#replay")!;
@@ -35,16 +38,101 @@ function show(tab: Tab): void {
     panes.set(tab.id, pane);
   }
   for (const [id, pane] of panes) pane.hidden = id !== tab.id;
-  nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab.id));
+  document.querySelectorAll<HTMLElement>(".sidebar [data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab.id));
+  tabTitle.textContent = tab.title;
   if (lastSnapshot) tab.update?.(lastSnapshot);
 }
 
-for (const tab of tabs) {
+// Sidebar: tabs listed under their group, About and the collapse button at the bottom.
+const GROUPS: [TabGroup, string][] = [["input", "Input"], ["output", "Output"], ["tools", "Tools"]];
+function navItem(label: string, icon: string): HTMLButtonElement {
   const b = document.createElement("button");
-  b.textContent = tab.title;
+  b.className = "nav-item";
+  b.innerHTML = `${icon}<span class="label"></span><i class="dot" hidden></i>`;
+  b.querySelector(".label")!.textContent = label;
+  b.dataset.label = label;
+  return b;
+}
+for (const [group, heading] of GROUPS) {
+  const members = tabs.filter((t) => t.group === group);
+  if (!members.length) continue;
+  const h = document.createElement("h4");
+  h.textContent = heading;
+  nav.appendChild(h);
+  for (const tab of members) {
+    const b = navItem(tab.title, tab.icon);
+    b.dataset.tab = tab.id;
+    b.addEventListener("click", () => show(tab));
+    nav.appendChild(b);
+  }
+}
+for (const tab of tabs.filter((t) => t.group === "app")) {
+  const b = navItem(tab.title, tab.icon);
   b.dataset.tab = tab.id;
   b.addEventListener("click", () => show(tab));
-  nav.appendChild(b);
+  navFoot.appendChild(b);
+}
+
+// Collapse to icons; below 1100 px the sidebar is icons anyway (styles.css) and the button hides.
+const collapse = navItem("Collapse", ICONS.collapse);
+collapse.classList.add("collapse");
+navFoot.appendChild(collapse);
+function setCollapsed(on: boolean): void {
+  document.body.classList.toggle("nav-collapsed", on);
+  collapse.dataset.label = on ? "Expand" : "Collapse";
+  collapse.querySelector(".label")!.textContent = collapse.dataset.label;
+  collapse.title = on ? "Show the tab names" : "";
+}
+try {
+  setCollapsed(localStorage.getItem("nav-collapsed") === "1");
+} catch {
+  setCollapsed(false);
+}
+collapse.addEventListener("click", () => {
+  const on = !document.body.classList.contains("nav-collapsed");
+  setCollapsed(on);
+  try {
+    localStorage.setItem("nav-collapsed", on ? "1" : "0");
+  } catch {}
+});
+
+// In icon mode, hovering an item shows its name beside it.
+const navTip = document.createElement("div");
+navTip.className = "nav-tip";
+navTip.hidden = true;
+document.body.appendChild(navTip);
+const sidebar = document.querySelector<HTMLElement>(".sidebar")!;
+sidebar.addEventListener("mouseover", (e) => {
+  const b = (e.target as Element).closest<HTMLElement>(".nav-item");
+  const iconsOnly = !b?.querySelector<HTMLElement>(".label")?.offsetWidth;
+  if (!b || !iconsOnly) return void (navTip.hidden = true);
+  const r = b.getBoundingClientRect();
+  navTip.textContent = b.dataset.label ?? "";
+  if (b.dataset.note) {
+    const note = document.createElement("em");
+    note.textContent = b.dataset.note;
+    navTip.append(" ", note);
+  }
+  navTip.style.left = `${r.right + 10}px`;
+  navTip.style.top = `${r.top + r.height / 2}px`;
+  navTip.hidden = false;
+});
+sidebar.addEventListener("mouseleave", () => (navTip.hidden = true));
+
+// Live dots: an output that is sending, the Recorder while recording or replaying.
+function setDot(id: string, kind: "" | "ok" | "rec" | "play", note: string): void {
+  const b = nav.querySelector<HTMLElement>(`[data-tab="${id}"]`);
+  const dot = b?.querySelector<HTMLElement>(".dot");
+  if (!b || !dot) return;
+  dot.hidden = !kind;
+  dot.className = `dot ${kind}`;
+  if (note) b.dataset.note = note;
+  else delete b.dataset.note;
+}
+function renderDots(snap: Snapshot): void {
+  setDot("midi", snap.midi.connected ? "ok" : "", snap.midi.connected ? `Sending to ${snap.midi.connected}` : "");
+  const t = snap.tape;
+  setDot("recorder", t.recording ? "rec" : t.playback ? "play" : "", t.recording ? "Recording" : t.playback ? "Replaying" : "");
 }
 show(active);
 
@@ -188,5 +276,6 @@ onSnapshot((snap) => {
   power.hidden = !snap.state || !!snap.tape.playback;
   renderRecord(snap);
   renderSteamWarning(snap);
+  renderDots(snap);
   active.update?.(snap);
 });

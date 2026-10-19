@@ -1,6 +1,6 @@
 # README screenshots
 
-`docs/screenshots/*.png` are the real app UI at the default 1100 x 720 window (1.5x), fed a real
+`docs/screenshots/*.png` are the real app UI at the default 1280 x 720 window (1.5x), fed a real
 recording, so they show real data without a controller or a window on screen.
 
 - `snapshots.json` (not committed): a recording replayed through the app's own Rust folds and

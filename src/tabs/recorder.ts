@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RecordingInfo, Snapshot, TapeStatus } from "../controller";
 import { controlPlayback, formatTime, playRecording, startRecording, stopRecording } from "../tape";
 import type { Tab } from "./tab";
+import { ICONS as NAV_ICONS } from "./icons";
 
 const ICONS = {
   play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>`,
@@ -26,6 +27,8 @@ const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<":
 export class RecorderTab implements Tab {
   id = "recorder";
   title = "Recorder";
+  group = "tools" as const;
+  icon = NAV_ICONS.recorder;
   private root!: HTMLElement;
   private visible = false;
   private tape: TapeStatus = { recording: null, playback: null, message: null };

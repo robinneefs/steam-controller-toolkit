@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sidebar navigation mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ---------- Mockup page chrome (not part of the app) ---------- */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: #06080c; color: #c9d3de; font: 500 14px "Barlow", system-ui, sans-serif; }
+  .picker { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 12px 24px; background: #06080cf2; border-bottom: 1px solid #ffffff14; }
+  .picker > b { color: #fff; font-size: 15px; margin-right: 6px; }
+  .group { display: flex; align-items: center; gap: 6px; }
+  .group > span { color: #8ea0b4; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; }
+  .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #ffffff0a; border: 1px solid #ffffff14; }
+  .seg button, .chk { font: 600 13px "Barlow"; color: #8ea0b4; background: none; border: 0; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+  .seg button.on { background: #eef3f8; color: #0f1622; }
+  .chk { border: 1px solid #ffffff14; }
+  .chk.on { color: #eef3f8; border-color: #1a9fff88; background: #1a9fff22; }
+  .stage { padding: 24px; }
+  /* ?bare: just the window, for sidebar-compare.html */
+  .bare .picker, .bare .frame-head, .bare .notes { display: none; }
+  .bare .stage { padding: 0; }
+  .bare { background: transparent; overflow: hidden; }
+  .frame-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 10px; color: #8ea0b4; }
+  .frame-head b { color: #fff; font-size: 16px; }
+  .fit { position: relative; }
+  .window { position: absolute; top: 0; left: 0; transform-origin: 0 0; border-radius: 10px; overflow: hidden; box-shadow: 0 30px 80px #000c, 0 0 0 1px #ffffff1a; container: win / inline-size; }
+  .notes { max-width: 1100px; margin: 22px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 26px; color: #a9b6c4; line-height: 1.45; }
+  .notes li b { color: #eef3f8; }
+
+  /* ---------- The app (tokens from src/styles.css) ---------- */
+  .app {
+    --bg: #0f1622; --text: #eef3f8; --muted: #8ea0b4; --line: #ffffff14; --card: #ffffff08;
+    --accent: #1a9fff; --accent-2: #66c0f4; --warm: #ffb547; --ok: #5fe39a; --rec: #ff5a5a;
+    --side-w: 208px;
+    position: relative; height: 100%; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr);
+    font: 500 14px "Barlow", system-ui, sans-serif; color: var(--text); user-select: none; cursor: default;
+    background:
+      radial-gradient(90% 70% at 30% 0%, #1f3550 0%, transparent 60%),
+      radial-gradient(70% 60% at 100% 100%, #2a1f45 0%, transparent 60%),
+      var(--bg);
+    transition: grid-template-columns 0.18s ease;
+  }
+  .app button { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Sidebar */
+  .side { min-height: 0; display: flex; flex-direction: column; padding: 14px 12px 12px; border-right: 1px solid #ffffff1f; background: #070b12b3; }
+  /* Floating: an inset card with the hero tile's gradient, no divider. */
+  .app.floating .side { margin: 16px 0 16px 16px; border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(160deg, #22344c 0%, #152031 60%, #121b2a 100%); box-shadow: 0 12px 32px #0007; }
+  .app.floating .topbar { padding-top: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 16px; font-weight: 700; font-size: 13px; line-height: 1.15; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+  .brand img { flex: none; width: 36px; height: 36px; }
+  .nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; scrollbar-color: #ffffff2e transparent; }
+  .nav h4 { margin: 12px 10px 6px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+  .nav h4:first-child { margin-top: 2px; }
+  .item { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; height: 38px; padding: 0 11px; border: 0; border-radius: 12px; background: none; color: var(--muted); font-weight: 600; font-size: 14.5px; text-align: left; white-space: nowrap; cursor: pointer; }
+  .item svg { flex: none; width: 19px; height: 19px; }
+  .item:hover { color: var(--text); background: #ffffff0d; }
+  .item.active { background: var(--text); color: var(--bg); }
+  .item .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .item .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px #5fe39a26; }
+  .item .dot.rec { background: var(--rec); box-shadow: 0 0 0 3px #ff5a5a26; animation: rec-pulse 1.2s ease-in-out infinite; }
+  .item.active .dot { box-shadow: none; }
+  .item .badge { flex: none; padding: 1px 7px; border-radius: 999px; background: #1a9fff2e; color: var(--accent-2); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  .item.active .badge { background: #1a9fff; color: #fff; }
+  .item.later { opacity: 0.45; cursor: not-allowed; }
+  .item.later .badge { background: #ffffff14; color: var(--muted); }
+  .item.later:hover { background: none; color: var(--muted); }
+  .side-foot { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--line); }
+  .collapse svg { transition: transform 0.18s; }
+  @keyframes rec-pulse { 50% { opacity: 0.35; } }
+
+  /* Rail: forced, or automatic below 1100 px */
+  .app.rail { --side-w: 68px; }
+  @container win (max-width: 1099px) { .app.auto { --side-w: 68px; } }
+  .app.rail .side { padding-left: 10px; padding-right: 10px; }
+  .app.rail .brand { justify-content: center; padding: 2px 0 16px; }
+  .app.rail .brand span, .app.rail .item .lbl, .app.rail .item .badge { display: none; }
+  .app.rail .nav h4 { height: 1px; margin: 9px 8px; padding: 0; overflow: hidden; color: transparent; background: var(--line); }
+  .app.rail .nav h4:first-child { display: none; }
+  .app.rail .item { justify-content: center; padding: 0; }
+  .app.rail .item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
+  .app.rail .collapse svg { transform: rotate(180deg); }
+  @container win (max-width: 1099px) {
+    .app.auto .side { padding-left: 10px; padding-right: 10px; }
+    .app.auto .brand { justify-content: center; padding: 2px 0 16px; }
+    .app.auto .brand span, .app.auto .item .lbl, .app.auto .item .badge { display: none; }
+    .app.auto .nav h4 { height: 1px; margin: 9px 8px; padding: 0; overflow: hidden; color: transparent; background: var(--line); }
+    .app.auto .nav h4:first-child { display: none; }
+    .app.auto .item { justify-content: center; padding: 0; }
+    .app.auto .item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
+    .app.auto .collapse { display: none; }
+  }
+  .tip { position: absolute; z-index: 30; padding: 6px 11px; border: 1px solid var(--line); border-radius: 10px; background: #1b2738; box-shadow: 0 8px 24px #0008; color: var(--text); font-weight: 600; white-space: nowrap; pointer-events: none; transform: translateY(-50%); }
+  .tip[hidden] { display: none; }
+  .tip em { font-style: normal; color: var(--muted); font-weight: 500; margin-left: 6px; }
+
+  /* Main column */
+  .main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px 10px; min-height: 62px; }
+  .topbar h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; }
+  .replay { flex: none; display: flex; white-space: nowrap; }
+  .tape-pill { display: inline-flex; align-items: center; gap: 8px; padding: 3px 4px 3px 10px; border: 1px solid #1a9fff66; border-radius: 999px; background: #1a9fff1f; font-weight: 600; }
+  .tape-pill b { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-2); }
+  .tape-pill button { display: grid; place-items: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #ffffff14; font-size: 10px; cursor: pointer; }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--muted); white-space: nowrap; }
+  .status .rate { min-width: 6ch; text-align: right; }
+  .battery { display: flex; align-items: center; gap: 8px; color: var(--text); }
+  .battery .cell { position: relative; width: 26px; height: 13px; padding: 1px; border: 2px solid #eef3f8aa; border-radius: 4px; }
+  .battery .cell::after { content: ""; position: absolute; right: -5px; top: 2px; width: 2px; height: 5px; border-radius: 0 2px 2px 0; background: #eef3f8aa; }
+  .battery .cell i { display: block; width: 89%; height: 100%; border-radius: 1px; background: var(--ok); }
+  .rbtn { flex: none; display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 32px; height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; background: #ffffff0d; font-weight: 600; }
+  .rbtn i { width: 12px; height: 12px; border-radius: 50%; background: var(--rec); }
+  .rbtn.on { padding: 0 12px 0 11px; border-color: #ff5a5a88; background: #ff5a5a26; }
+  .rbtn.on i { width: 10px; height: 10px; border-radius: 2px; animation: rec-pulse 1.2s ease-in-out infinite; }
+  .rbtn span:empty { display: none; }
+  .power { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 999px; background: #ffffff0d; color: var(--muted); }
+  .content { flex: 1; min-height: 0; padding: 6px 24px 16px; }
+  .statusbar { display: flex; align-items: center; gap: 16px; min-height: 40px; padding: 6px 24px; border-top: 1px solid var(--line); background: #00000030; color: var(--muted); font-size: 13px; }
+  .warn { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+  .warn span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .warn b, .warn .i { color: var(--warm); }
+  .warn[hidden] { display: none; }
+  .statusbar .ver { margin-left: auto; flex: none; }
+
+  /* Visualizer (simplified) */
+  .tile { min-height: 0; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
+  .tile h3 { display: flex; justify-content: space-between; margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .tile h3 em { font-style: normal; color: var(--accent-2); letter-spacing: 0; text-transform: none; }
+  .viz { height: 100%; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr); gap: 18px; }
+  .hero { position: relative; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(160deg, #23364f 0%, #141f30 60%, #111a29 100%); padding: 22px 24px; display: flex; flex-direction: column; }
+  .hero .k { color: var(--accent-2); font-size: 12px; font-weight: 600; letter-spacing: 0.14em; }
+  .hero h2 { margin: 2px 0 10px; font-size: 25px; font-weight: 700; }
+  .hint { align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 6px 13px 6px 6px; border: 1px solid #1a9fff66; border-radius: 999px; background: #1a9fff1f; font-weight: 600; font-size: 13px; }
+  .hint i { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); }
+  .pad3d { position: relative; flex: 1; min-height: 0; margin: 6px -10px; }
+  .pad3d i { position: absolute; background: url(../docs/screenshots/visualizer.png) no-repeat; -webkit-mask-image: radial-gradient(closest-side, #000 82%, transparent); mask-image: radial-gradient(closest-side, #000 82%, transparent); }
+  .angles { display: flex; align-items: flex-end; gap: 30px; }
+  .angles div span { display: block; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; }
+  .angles div b { font-size: 30px; font-weight: 700; }
+  .angles .gb { margin-left: auto; padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: #ffffff14; font-weight: 600; white-space: nowrap; }
+  .tiles { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 14px; min-height: 0; }
+  .rings { display: flex; justify-content: space-between; gap: 6px; }
+  .ring { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .ring i { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--warm); }
+  .ring i.s { border: 1px solid var(--line); background: radial-gradient(circle, var(--accent) 0 5px, transparent 6px); }
+  .ring i.p { border-radius: 10px; border: 1px solid var(--line); }
+  .motion svg { width: 100%; height: calc(100% - 26px); }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btns span { padding: 4px 10px; border: 1px solid var(--line); border-radius: 9px; background: #ffffff0a; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .btns span.on { background: var(--accent); color: #fff; border-color: transparent; }
+  .placeholder { height: 100%; display: grid; place-items: center; text-align: center; color: var(--muted); }
+  .placeholder b { display: block; margin-bottom: 4px; color: var(--text); font-size: 18px; }
+</style>
+</head>
+<body>
+<div class="picker">
+  <b>Sidebar mockup</b>
+  <div class="group"><span>Window</span><div class="seg" data-pick="size">
+    <button data-v="1100x720" class="on">1100 × 720 default</button><button data-v="960x640">960 × 640 minimum</button><button data-v="1440x900">1440 × 900</button>
+  </div></div>
+  <div class="group"><span>Sidebar</span><div class="seg" data-pick="nav">
+    <button data-v="auto" class="on">Auto</button><button data-v="expanded">Labels</button><button data-v="rail">Icons</button>
+  </div></div>
+  <div class="group"><span>Style</span><div class="seg" data-pick="style">
+    <button data-v="panel" class="on">Panel</button><button data-v="floating">Floating</button>
+  </div></div>
+  <div class="group"><span>State</span>
+    <button class="chk on" data-toggle="recording">Recording</button>
+    <button class="chk on" data-toggle="replay">Replay</button>
+    <button class="chk" data-toggle="steam">Steam warning</button>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="frame-head"><b id="frame-title">1100 × 720</b><span id="frame-sub">Auto: labels from 1100 px, icons below.</span></div>
+  <div class="fit" id="fit">
+    <div class="window" id="window">
+      <div class="app auto" id="app">
+        <aside class="side">
+          <div class="brand"><img src="../public/logo.png" alt="" /><span>Steam Controller<br />Toolkit</span></div>
+          <nav class="nav" id="nav">
+            <h4>Input</h4>
+            <button class="item active" data-tab="Visualizer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5h10a5 5 0 0 1 4.9 6l-1 5a3 3 0 0 1-5.2 1.4L14 16h-4l-1.7 1.4A3 3 0 0 1 3.1 16l-1-5A5 5 0 0 1 7 5z"/><path d="M6 10.5h4M8 8.5v4"/><path d="M15.5 9.5h.01M17.5 11.5h.01"/></svg><span class="lbl">Visualizer</span></button>
+            <button class="item" data-tab="Raw data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H7a2 2 0 0 0-2 2v4l-2 2 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 4h1a2 2 0 0 1 2 2v4l2 2-2 2v4a2 2 0 0 1-2 2h-1"/></svg><span class="lbl">Raw data</span></button>
+            <h4>Output</h4>
+            <button class="item" data-tab="MIDI" data-note="Port open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M7.5 12h.01M16.5 12h.01M8.8 8.8h.01M15.2 8.8h.01M12 7.5h.01M10.5 17.5h3"/></svg><span class="lbl">MIDI</span><i class="dot" title="Port open"></i></button>
+            <button class="item" data-tab="OSC" data-note="New"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1.6"/><path d="M8.6 15.4a4.8 4.8 0 0 1 0-6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg><span class="lbl">OSC</span><span class="badge">New</span></button>
+            <button class="item later" data-later data-note="Later"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="3"/><path d="M12 9v6"/><rect x="4" y="15" width="16" height="6" rx="2"/></svg><span class="lbl">Gamepad</span></button>
+            <button class="item later" data-later data-note="Later"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span class="lbl">Keyboard</span></button>
+            <h4>Tools</h4>
+            <button class="item" data-tab="Haptics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="4" width="8" height="16" rx="2"/><path d="M4.5 9v6M19.5 9v6M1.8 10.5v3M22.2 10.5v3"/></svg><span class="lbl">Haptics</span></button>
+            <button class="item" data-tab="Recorder" data-note="Recording"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/></svg><span class="lbl">Recorder</span><i class="dot rec" id="rec-dot"></i></button>
+          </nav>
+          <div class="side-foot">
+            <button class="item" data-tab="About"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span class="lbl">About</span></button>
+            <button class="item collapse" id="collapse" data-note="Collapse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg><span class="lbl">Collapse</span></button>
+          </div>
+        </aside>
+
+        <div class="main">
+          <header class="topbar">
+            <h1 id="title">Visualizer</h1>
+            <div class="replay" id="replay"><span class="tape-pill"><b>Replay</b><span class="num">0:42 / 2:15</span><button>❚❚</button><button>■</button></span></div>
+            <div class="status"><span id="device">Puck · slot 1</span><span class="num rate">262 Hz</span><span class="battery"><span class="cell"><i></i></span><span class="num">89%</span></span></div>
+            <button class="rbtn on" id="record"><i></i><span class="num" id="rec-time">1:07</span></button>
+            <button class="power"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg></button>
+          </header>
+
+          <main class="content" id="content"></main>
+
+          <footer class="statusbar">
+            <div class="warn" id="warn" hidden><span class="i">▲</span><span><b>Steam is running.</b> Its Desktop Layout turns the controller into a mouse and keyboard. Close Steam, or clear Steam → Settings → Controller → Desktop Layout.</span></div>
+            <span class="ver">v0.2.0</span>
+          </footer>
+        </div>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>Groups.</b> Input (what the controller sends), Output (where it goes: MIDI, OSC, later a virtual gamepad and keyboard/mouse, dimmed here as placeholders), Tools. About sits at the bottom. A new tab is one entry in the right group, with no fight for width.</li>
+    <li><b>Widths.</b> Labels are 208 px, icons 68 px. Auto switches to icons below 1100 px, so at the 960 px minimum the content gets 892 px (today's full-width layout gets 960). Collapse lets you pick icons at any size, and the app would remember it.</li>
+    <li><b>Top bar.</b> Only the tab title and the live status are left: replay, device, Hz, battery, record and power. They have room now, even with a recording and a replay running at 960 px.</li>
+    <li><b>Live dots.</b> A green dot when an output is sending (MIDI port open, OSC streaming) and a red one on Recorder while recording, so you see it from any tab. In icon mode they sit on the icon's corner, and hovering shows the name.</li>
+  </ul>
+</div>
+
+<script>
+  const win = document.getElementById("window");
+  const fit = document.getElementById("fit");
+  const app = document.getElementById("app");
+  const content = document.getElementById("content");
+  const tip = document.getElementById("tip");
+  const state = { size: "1100x720", nav: "auto", style: "panel", recording: true, replay: true, steam: false, tab: "Visualizer" };
+  // sidebar-compare.html embeds this page twice: ?bare&style=floating, then syncs the rest by message.
+  const params = new URLSearchParams(location.search);
+  for (const key of ["size", "nav", "style"]) if (params.has(key)) state[key] = params.get(key);
+  const bare = params.has("bare");
+  document.body.classList.toggle("bare", bare);
+  addEventListener("message", (e) => { if (e.data?.mockState) { Object.assign(state, e.data.mockState); render(); } });
+  const share = (patch) => { if (bare) parent.postMessage({ mockState: patch }, "*"); };
+
+  const VIZ = `
+    <div class="viz">
+      <div class="hero">
+        <span class="k">CONNECTED</span><h2>Steam Controller</h2>
+        <span class="hint"><i></i>Rotating with controller</span>
+        <div class="pad3d" id="pad3d"></div>
+        <div class="angles"><div><span>PITCH</span><b class="num">34°</b></div><div><span>ROLL</span><b class="num">11°</b></div><div><span>YAW</span><b class="num">-1°</b></div><span class="gb">Re-center yaw</span></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><h3>Analog</h3><div class="rings">
+          <span class="ring"><i></i>LT</span><span class="ring"><i></i>RT</span><span class="ring"><i class="s"></i>L stick</span><span class="ring"><i class="s"></i>R stick</span><span class="ring"><i class="p"></i>L pad</span><span class="ring"><i class="p"></i>R pad</span>
+        </div></div>
+        <div class="tile motion"><h3>Motion <em>Gyro °/s</em></h3>
+          <svg viewBox="0 0 300 100" preserveAspectRatio="none">
+            <path d="M0 50H300" stroke="#ffffff14"/>
+            <path d="M0 50 C20 40 30 60 50 48 S80 35 100 52 S130 62 150 46 S180 40 200 53 S240 58 260 47 S290 44 300 50" fill="none" stroke="#1a9fff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+            <path d="M0 52 C25 58 35 44 55 54 S85 62 105 47 S135 40 155 55 S185 60 205 46 S245 42 265 54 S290 56 300 49" fill="none" stroke="#ffb547" stroke-width="2" vector-effect="non-scaling-stroke"/>
+            <path d="M0 49 C15 52 40 46 60 50 S90 55 110 49 S140 46 160 51 S190 53 210 48 S250 47 270 51 S295 50 300 50" fill="none" stroke="#c18cff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </div>
+        <div class="tile"><h3>Buttons <em>2 held</em></h3><div class="btns">
+          ${["LT","L","L4","L5","☰","Steam","···","⧉","L3","R3","R","RT","R4","R5","A","B","X","Y"].map((b) => `<span class="${b === "LT" || b === "RT" ? "on" : ""}">${b}</span>`).join("")}
+        </div></div>
+      </div>
+    </div>`;
+
+  function placeholder(tab) {
+    const what = {
+      "Raw data": "Device facts and report bytes, as today.",
+      MIDI: "The MIDI tab as today, a little narrower.",
+      OSC: "New tab: destinations, presets, live address list. Designed separately.",
+      Haptics: "Every haptic effect, as today.",
+      Recorder: "Record and replay, as today.",
+      About: "Credits, as today.",
+    }[tab];
+    return `<div class="tile placeholder"><div><b>${tab}</b>${what}</div></div>`;
+  }
+
+  function render() {
+    const [w, h] = state.size.split("x").map(Number);
+    win.style.width = w + "px";
+    win.style.height = h + "px";
+    app.classList.toggle("auto", state.nav === "auto");
+    app.classList.toggle("rail", state.nav === "rail");
+    app.classList.toggle("floating", state.style === "floating");
+    document.getElementById("replay").hidden = !state.replay;
+    document.getElementById("device").hidden = state.replay;
+    const rec = document.getElementById("record");
+    rec.classList.toggle("on", state.recording);
+    document.getElementById("rec-time").textContent = state.recording ? "1:07" : "";
+    document.getElementById("rec-dot").hidden = !state.recording;
+    document.getElementById("warn").hidden = !state.steam;
+    document.getElementById("title").textContent = state.tab;
+    document.querySelectorAll(".item[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
+    content.innerHTML = state.tab === "Visualizer" ? VIZ : placeholder(state.tab);
+    const railNow = state.nav === "rail" || (state.nav === "auto" && w < 1100);
+    document.getElementById("frame-title").textContent = `${w} × ${h}`;
+    document.getElementById("frame-sub").textContent =
+      state.nav === "auto" ? (railNow ? "Auto: icons below 1100 px (hover one for its name)." : "Auto: labels from 1100 px, icons below.")
+      : state.nav === "rail" ? "Collapsed to icons by choice." : "Labels at every width.";
+    document.querySelectorAll("[data-pick]").forEach((g) => g.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === state[g.dataset.pick])));
+    document.querySelectorAll("[data-toggle]").forEach((b) => b.classList.toggle("on", state[b.dataset.toggle]));
+    scale();
+    cropController();
+  }
+
+  // The 3D view: the controller cut out of the real Visualizer screenshot (1650 x 1080, 1.5x).
+  function cropController() {
+    const el = document.getElementById("pad3d");
+    if (!el) return;
+    const src = { x: 140, y: 290, w: 690, h: 500 };
+    const k = Math.min(el.clientWidth / src.w, el.clientHeight / src.h);
+    const cut = el.firstElementChild || el.appendChild(document.createElement("i"));
+    Object.assign(cut.style, {
+      width: src.w * k + "px", height: src.h * k + "px",
+      left: (el.clientWidth - src.w * k) / 2 + "px", top: (el.clientHeight - src.h * k) / 2 + "px",
+      backgroundSize: `${1650 * k}px ${1080 * k}px`, backgroundPosition: `${-src.x * k}px ${-src.y * k}px`,
+    });
+  }
+
+  function scale() {
+    const w = parseInt(win.style.width), h = parseInt(win.style.height);
+    const k = params.has("zoom") ? 1 : bare ? document.body.clientWidth / w : Math.min(1, (document.querySelector(".stage").clientWidth - 48) / w);
+    win.style.transform = `scale(${k})`;
+    win.dataset.k = k;
+    fit.style.height = h * k + "px";
+  }
+  addEventListener("resize", () => { scale(); cropController(); });
+  app.addEventListener("transitionend", cropController);
+
+  document.querySelectorAll("[data-pick]").forEach((g) => g.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    state[g.dataset.pick] = b.dataset.v; render();
+  }));
+  document.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => { state[b.dataset.toggle] = !state[b.dataset.toggle]; render(); }));
+  app.addEventListener("click", (e) => {
+    const b = e.target.closest(".item[data-tab]"); if (b) { state.tab = b.dataset.tab; render(); share({ tab: state.tab }); }
+  });
+  document.getElementById("collapse").addEventListener("click", () => {
+    state.nav = app.classList.contains("rail") ? "expanded" : "rail"; render(); share({ nav: state.nav });
+  });
+
+  // Names on hover, only when the sidebar shows icons.
+  app.addEventListener("mouseover", (e) => {
+    const b = e.target.closest(".item");
+    const rail = getComputedStyle(app).getPropertyValue("--side-w").trim() === "68px";
+    if (!b || !rail) { tip.hidden = true; return; }
+    const k = Number(win.dataset.k) || 1;
+    const r = b.getBoundingClientRect(), a = app.getBoundingClientRect();
+    const name = b.querySelector(".lbl").textContent;
+    const note = b.dataset.note && (b.dataset.note !== "Recording" || state.recording) ? `<em>${b.dataset.note}</em>` : "";
+    tip.innerHTML = name + note;
+    tip.style.left = (r.right - a.left) / k + 10 + "px";
+    tip.style.top = (r.top + r.height / 2 - a.top) / k + "px";
+    tip.hidden = false;
+  });
+  app.addEventListener("mouseleave", () => (tip.hidden = true));
+
+  render();
+</script>
+</body>
+</html>

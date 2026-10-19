@@ -3,14 +3,15 @@
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
 effect), MIDI (controller as a MIDI controller), Raw data (device facts and report bytes), Recorder (record and replay reports) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
-navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, pill tabs, rounded tiles.
+navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, rounded tiles; the tabs are in a
+left sidebar (`mockups/sidebar.html`, Panel style).
 
 Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/icons/` are
 generated from it with `npx tauri icon assets/logo.png` (delete the android/ios folders after);
 `public/logo.png` is the in-app/favicon copy. Code is MIT (`LICENSE`); the protocol is
 documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`. The README
 links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
-`docs/screenshots/` (taken at the default 1100 x 720 window, 1.5x); retake them when a tab's look changes
+`docs/screenshots/` (taken at the default 1280 x 720 window, 1.5x); retake them when a tab's look changes
 with `tools/screenshots` (the real UI fed a real recording through a mock backend, captured by headless
 Edge/Chrome; see its README). The MIDI tab has two shots: `midi.png` and `midi-guide.png`.
 
@@ -64,13 +65,14 @@ without the user asking: a `v*` tag makes CI draft a release.
   service restart (restarting `midisrv` needs admin; a stuck one must be killed). Microsoft's
   go-live terms: never on Windows below 25H2, keep up with previews, tell users it's a preview,
   remove our copy once Windows has it.
-- **`src/`**: `main.ts` builds the tab bar from the `tabs` array; each tab implements `Tab` in
+- **`src/`**: `main.ts` builds the sidebar from the `tabs` array (grouped by `group`); each tab implements `Tab` in
   `src/tabs/tab.ts`. `src/controller.ts` mirrors the Rust types and must be kept in sync with
   `crates/sc-core/src/protocol.rs` and `Snapshot` in `src-tauri/src/lib.rs`.
 
 ## Adding a tab
 
-Create `src/tabs/<name>.ts` implementing `Tab`, add it to the `tabs` array in `src/main.ts`.
+Create `src/tabs/<name>.ts` implementing `Tab` (with a `group` and an icon in `src/tabs/icons.ts`),
+add it to the `tabs` array in `src/main.ts`.
 If it needs data the snapshot lacks, extend `Snapshot` in Rust and `controller.ts` together.
 If it needs to send commands to the controller (haptics, settings), add a method on
 `sc_core::Controller`, a `hub::Command` variant that `read_loop` runs, and a Tauri command in
@@ -161,7 +163,10 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
   Building on Linux needs `libasound2-dev` for `midir` (installed in CI).
 - Windows: the app's own MIDI port needs Windows 11 25H2+ (see Windows MIDI Services above).
 - macOS may prompt for Input Monitoring permission.
-- The window has a minimum size of 960 x 640 (`tauri.conf.json`); every tab must fit that without
-  horizontal scrolling. The top bar is the tightest fit: below 1100 px wide the brand shows only
-  its logo, and below 1200 px the tabs are padded tighter: with six tabs, a recording and a replay
-  it only just fits at 1100 px. Check it with a recording and a replay running when adding tabs or top bar items. Tabs scroll vertically if needed, with the themed thin scrollbars.
+- The window opens at 1280 x 720 and has a minimum size of 960 x 640 (`tauri.conf.json`); every tab
+  must fit without horizontal scrolling. Tabs sit in a grouped sidebar (`Tab.group`, `Tab.icon` from
+  `src/tabs/icons.ts`): 208 px with names from 1100 px wide, a 68 px icon rail below that or when
+  collapsed (remembered in localStorage). So the tabs get as little as ~850 px (1100 px with names);
+  size tab layouts with `@container tab` (`#tab-content`), not the window width. The MIDI tab has a
+  narrower layout for that (`@container tab (max-width: 900px)`). Check new tabs at 1100 and 960 px.
+  Tabs scroll vertically if needed, with the themed thin scrollbars.
