@@ -629,6 +629,21 @@ select.field.edited { border-color: #ffb54788; }
 .guide-steps ul { margin: 0 0 6px; padding-left: 18px; color: #c9d3de; }
 .guide-steps li { margin-bottom: 3px; }
 .guide-steps b { color: var(--text); }
+.guide-steps .muted, .guide-steps .muted b { color: var(--muted); }
+.guide-steps section.wide { grid-column: 1 / -1; }
+.guide-steps section.wide + section { grid-row: auto; }
+/* Windows step 1: the experimental port and the loopback fallback side by side. */
+.port-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
+.port-option { padding: 12px 14px; border: 1px solid #ffffff14; border-radius: 12px; background: #ffffff08; }
+.port-option-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 14px; }
+.badge { flex: none; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.badge.exp { border: 1px solid #ffb54766; background: #ffb5471a; color: var(--warm); }
+.badge.sure { border: 1px solid #5fe39a66; background: #5fe39a1a; color: var(--ok); }
+.callout { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--warm); border-radius: 0 8px 8px 0; background: #ffb5470f; color: #c9d3de; }
+.callout.fix { border-left-color: var(--accent); background: #1a9fff14; }
+.port-steps { margin: 0 0 6px; padding-left: 20px; color: #c9d3de; }
+.port-steps li { margin-bottom: 6px; }
+.port-steps li .muted { display: block; margin-top: 2px; }
 .ok-text { color: var(--ok); font-weight: 600; }
 .warn-text { color: var(--warm); font-weight: 600; }
 .midi .hint a, .help-tip a { color: var(--accent-2); cursor: pointer; }

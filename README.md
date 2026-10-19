@@ -81,11 +81,13 @@ output; pick it as a MIDI input in your DAW and you're done.
 - **Windows**: needs Windows 11 25H2 or later and uses
   [Windows MIDI Services](https://github.com/microsoft/MIDI), which Microsoft still calls a
   **preview**. Until its update (expected late November 2026), Windows makes the port only once
-  per restart, so the MIDI tab offers it as **Steam Controller (experimental)**; it becomes a
-  normal port by itself once Windows has the update. What always works is a loopback port:
-  create one with the free [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
-  (or Windows MIDI Services' *Loopback endpoints*), pick it as the output in the MIDI tab, and as
-  an input in your DAW.
+  per restart: it works the first time you open the app after starting the PC, but after
+  reopening the app the MIDI service may stop responding until you restart the PC. So the MIDI
+  tab offers it as **Steam Controller (experimental)**; it becomes a normal, default port by
+  itself once Windows has the update. If the experimental port doesn't work for you, use a
+  loopback port, which always works: create one with the free
+  [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) (or Windows MIDI Services'
+  *Loopback endpoints*), pick it as the output in the MIDI tab, and as an input in your DAW.
 
 ![MIDI Setup guide on Windows: choosing a port, turning it on in each DAW, playing notes](docs/screenshots/midi-guide.png)
 

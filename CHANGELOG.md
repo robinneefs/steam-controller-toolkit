@@ -5,6 +5,13 @@ All notable changes to Steam Controller Toolkit. The app follows
 version (0.2.0) and fixes bump the patch version (0.2.1). See
 [Releasing](README.md#releasing) for how to make a version.
 
+## [Unreleased]
+
+### Changed
+
+- MIDI Setup guide on Windows: the experimental port and a loopback port side by side, with why
+  the port is experimental, the fix in Microsoft's MIDI update, and what to do if it doesn't work.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added

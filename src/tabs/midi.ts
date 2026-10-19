@@ -219,16 +219,41 @@ function portStep(v: VirtualSupport, ports: string[]): string {
       itself with Windows MIDI Services, so there's nothing to install; it goes away when the app closes.</p>`;
   }
   const loopback = ports.filter((p) => !/wavetable|microsoft gs/i.test(p));
-  return `${v.experimental
-      ? `<p><b>Quick try:</b> pick <b>Steam Controller (experimental)</b> under <b>Output</b>. ${EXPERIMENTAL}</p>
-         <p><b>Always works:</b> a loopback port. Make one once; it passes MIDI from this app to your DAW:</p>`
-      : `<p>This PC can't give the app its own MIDI port${v.note ? ` (${escape(v.note.replace(/\.$/, ""))})` : ""},
-         so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>`}
-    <ul><li>Install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.</li>
-    <li>Or, with Windows MIDI Services (recent Windows 11): open <b>MIDI Settings</b>, go to <b>Loopback endpoints</b> and create one.</li></ul>
-    <p>Then <button class="mini" data-guide-refresh>↻ Look for ports</button> and pick it under <b>Output</b>.
-    ${loopback.length ? `Found: <b>${loopback.map(escape).join("</b>, <b>")}</b>.` : `<span class="warn-text">No loopback port found yet.</span>`}
-    Skip <i>Microsoft GS Wavetable Synth</i>: it plays Windows' built-in sounds instead of reaching your DAW.</p>`;
+  const loopbackSteps = `<ol class="port-steps">
+      <li>Install the free <b>loopMIDI</b> (tobias-erichsen.de) and click <b>+</b> to add a port. Keep it running; it can start with Windows.
+        <span class="muted">Or, with Windows MIDI Services: open <b>MIDI Settings</b> → <b>Loopback endpoints</b> and create one.</span></li>
+      <li><button class="mini" data-guide-refresh>↻ Look for ports</button>
+        ${loopback.length ? `Found: <b>${loopback.map(escape).join("</b>, <b>")}</b>.` : `<span class="warn-text">No loopback port found yet.</span>`}</li>
+      <li>Pick it under <b>Output</b>, and as the MIDI input in your DAW.</li>
+    </ol>
+    <p class="muted">Skip <i>Microsoft GS Wavetable Synth</i>: it plays Windows' built-in sounds instead of reaching your DAW.</p>`;
+  if (!v.experimental) {
+    return `<p>This PC can't give the app its own MIDI port${v.note ? ` (${escape(v.note.replace(/\.$/, ""))})` : ""},
+      so make a <b>loopback port</b> once. It passes MIDI from this app to your DAW:</p>${loopbackSteps}`;
+  }
+  return `<div class="port-options">
+      <div class="port-option">
+        <div class="port-option-head"><b>A. The app's own port</b><span class="badge exp">Experimental</span></div>
+        <p>Nothing to install: pick <b>Steam Controller (experimental)</b> under <b>Output</b>, then pick it as the MIDI
+          input in your DAW.</p>
+        <div class="callout">
+          <b>Why experimental?</b> It runs on Windows MIDI Services, which Microsoft still calls a preview. Until their fix,
+          Windows can make this port only <b>once per restart</b>: it works the first time you open the app after starting
+          the PC, but after closing and reopening the app the MIDI service may stop responding. Restarting the PC brings it back.
+        </div>
+        <div class="callout fix">
+          <b>A fix is coming.</b> Microsoft's MIDI update (expected late November 2026) puts Windows MIDI Services in Windows
+          itself. The app then uses it automatically: the port works every time, becomes the default and loses the
+          experimental label.
+        </div>
+      </div>
+      <div class="port-option">
+        <div class="port-option-head"><b>B. A loopback port</b><span class="badge sure">Always works</span></div>
+        <p>If the experimental port doesn't work for you (the MIDI service isn't responding, or your DAW doesn't list
+          it), make a loopback port once. It passes MIDI from this app to your DAW:</p>
+        ${loopbackSteps}
+      </div>
+    </div>`;
 }
 
 /** Problems worth a line, per system. */
@@ -250,7 +275,7 @@ function guideHtml(v: VirtualSupport, ports: string[]): string {
       <button class="icon-btn" data-guide-close title="Close" aria-label="Close">×</button>
     </div>
     <div class="guide-steps">
-      <section><h4><i>1</i>Choose where MIDI goes</h4>${portStep(v, ports)}
+      <section${OS === "windows" && v.experimental ? ` class="wide"` : ""}><h4><i>1</i>Choose where MIDI goes</h4>${portStep(v, ports)}
         <p>The dot next to the output turns <span class="ok-text">green</span> when it's connected.</p></section>
       <section><h4><i>2</i>Turn the port on in your DAW</h4>
         <p>Enable it as a MIDI <b>input</b>. Menu names vary a little between versions:</p>
