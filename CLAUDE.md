@@ -166,7 +166,7 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 - The window opens at 1280 x 720 and has a minimum size of 960 x 640 (`tauri.conf.json`); every tab
   must fit without horizontal scrolling. Tabs sit in a grouped sidebar (`Tab.group`, `Tab.icon` from
   `src/tabs/icons.ts`): 208 px with names from 1100 px wide, a 68 px icon rail below that or when
-  collapsed (remembered in localStorage). So the tabs get as little as ~850 px (1100 px with names);
+  collapsed (remembered in localStorage); below 1100 px Expand opens it over the tab (`.narrow.nav-open`). So the tabs get as little as ~850 px (1100 px with names);
   size tab layouts with `@container tab` (`#tab-content`), not the window width. The MIDI tab has a
   narrower layout for that (`@container tab (max-width: 900px)`). Check new tabs at 1100 and 960 px.
   Tabs scroll vertically if needed, with the themed thin scrollbars.

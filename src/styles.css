@@ -19,7 +19,7 @@
   --series-1: #1a9fff;
   --series-2: #ffb547;
   --series-3: #c18cff;
-  /* Sidebar width: labels, or icons only (collapsed, or below 1100 px). */
+  /* Sidebar width: labels, or icons only (collapsed, or below 1100 px; see .rail). */
   --side-w: 208px;
   color-scheme: dark;
   font-family: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -111,34 +111,25 @@ a:hover { text-decoration: underline; }
 .nav-item .dot.rec { background: var(--rec); box-shadow: 0 0 0 3px #ff5a5a26; animation: rec-pulse 1.2s ease-in-out infinite; }
 .nav-item.active .dot { box-shadow: none; }
 .nav-item.collapse svg { transition: transform 0.15s; }
-.nav-collapsed .nav-item.collapse svg { transform: rotate(180deg); }
 .nav-tip { position: fixed; z-index: 30; padding: 6px 11px; border: 1px solid var(--line); border-radius: 10px; background: #1b2738; box-shadow: 0 8px 24px #0008; color: var(--text); font-weight: 600; white-space: nowrap; pointer-events: none; transform: translateY(-50%); }
 .nav-tip[hidden] { display: none; }
 .nav-tip em { margin-left: 4px; color: var(--muted); font-style: normal; font-weight: 500; }
-/* Icons only. Keep the two copies of these rules the same. */
-.nav-collapsed { --side-w: 68px; }
-.nav-collapsed .sidebar { padding-left: 10px; padding-right: 10px; }
-.nav-collapsed .brand { justify-content: center; padding: 2px 0 16px; }
-.nav-collapsed .brand span, .nav-collapsed .nav-item .label { display: none; }
-.nav-collapsed .nav h4 { height: 1px; margin: 9px 8px; overflow: hidden; color: transparent; background: var(--line); }
-.nav-collapsed .nav h4:first-child { display: none; }
-.nav-collapsed .nav-item { justify-content: center; padding: 0; }
-.nav-collapsed .nav-item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
-@media (max-width: 1099px) {
-  :root { --side-w: 68px; }
-  .sidebar { padding-left: 10px; padding-right: 10px; }
-  .brand { justify-content: center; padding: 2px 0 16px; }
-  .brand span, .nav-item .label { display: none; }
-  .nav h4 { height: 1px; margin: 9px 8px; overflow: hidden; color: transparent; background: var(--line); }
-  .nav h4:first-child { display: none; }
-  .nav-item { justify-content: center; padding: 0; }
-  .nav-item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
-  .nav-item.collapse { display: none; }
-}
+/* Icons only (main.ts sets the classes): .rail when collapsed, or below 1100 px (.narrow) unless
+   Expand opened the sidebar over the tab (.nav-open), which leaves the tab's width alone. */
+.rail, .narrow { --side-w: 68px; }
+.rail .sidebar { padding-left: 10px; padding-right: 10px; }
+.rail .brand { justify-content: center; padding: 2px 0 16px; }
+.rail .brand span, .rail .nav-item .label { display: none; }
+.rail .nav h4 { height: 1px; margin: 9px 8px; overflow: hidden; color: transparent; background: var(--line); }
+.rail .nav h4:first-child { display: none; }
+.rail .nav-item { justify-content: center; padding: 0; }
+.rail .nav-item .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; }
+.rail .nav-item.collapse svg { transform: rotate(180deg); }
+.narrow.nav-open .sidebar { position: fixed; z-index: 25; top: 0; bottom: 0; left: 0; width: 208px; background: #0b111b; box-shadow: 12px 0 40px #000a; }
 
 /* ---------- Top bar ---------- */
 
-.main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.main { grid-column: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .topbar { display: flex; align-items: center; gap: 16px; min-height: 62px; padding: 14px 24px 10px; }
 .tab-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; }
 /* Replay pill: anchored after the tabs so the status and buttons on the right can change without moving it. */

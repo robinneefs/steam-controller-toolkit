@@ -73,27 +73,52 @@ for (const tab of tabs.filter((t) => t.group === "app")) {
   navFoot.appendChild(b);
 }
 
-// Collapse to icons; below 1100 px the sidebar is icons anyway (styles.css) and the button hides.
+// Collapse to icons at any width (remembered). Below 1100 px the sidebar is icons anyway, and the
+// same button opens it over the tab instead, until a tab is picked or you click elsewhere.
 const collapse = navItem("Collapse", ICONS.collapse);
 collapse.classList.add("collapse");
 navFoot.appendChild(collapse);
-function setCollapsed(on: boolean): void {
-  document.body.classList.toggle("nav-collapsed", on);
-  collapse.dataset.label = on ? "Expand" : "Collapse";
-  collapse.querySelector(".label")!.textContent = collapse.dataset.label;
-  collapse.title = on ? "Show the tab names" : "";
-}
+const narrowQuery = window.matchMedia("(max-width: 1099px)");
+let collapsed = false;
+let navOpen = false;
 try {
-  setCollapsed(localStorage.getItem("nav-collapsed") === "1");
-} catch {
-  setCollapsed(false);
+  collapsed = localStorage.getItem("nav-collapsed") === "1";
+} catch {}
+function renderNav(): void {
+  const narrow = narrowQuery.matches;
+  if (!narrow) navOpen = false;
+  const rail = narrow ? !navOpen : collapsed;
+  document.body.classList.toggle("narrow", narrow);
+  document.body.classList.toggle("nav-open", navOpen);
+  document.body.classList.toggle("rail", rail);
+  collapse.dataset.label = rail ? "Expand" : "Collapse";
+  collapse.querySelector(".label")!.textContent = collapse.dataset.label;
 }
+renderNav();
+narrowQuery.addEventListener("change", renderNav);
 collapse.addEventListener("click", () => {
-  const on = !document.body.classList.contains("nav-collapsed");
-  setCollapsed(on);
-  try {
-    localStorage.setItem("nav-collapsed", on ? "1" : "0");
-  } catch {}
+  if (narrowQuery.matches) {
+    navOpen = !navOpen;
+  } else {
+    collapsed = !collapsed;
+    try {
+      localStorage.setItem("nav-collapsed", collapsed ? "1" : "0");
+    } catch {}
+  }
+  navTip.hidden = true;
+  renderNav();
+});
+function closeNav(): void {
+  if (!navOpen) return;
+  navOpen = false;
+  renderNav();
+}
+document.addEventListener("click", (e) => {
+  const item = (e.target as Element).closest(".nav-item");
+  if ((item && item !== collapse) || !(e.target as Element).closest(".sidebar")) closeNav();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeNav();
 });
 
 // In icon mode, hovering an item shows its name beside it.
