@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Action, Activation, Directions, Layout, PadInput, PadMode, PlayStatus, Snapshot, StickMode } from "../controller";
 import { setAttr, setHtml, setText } from "../dom";
 import { addHelp, helpIcon } from "../help";
+import { powerHtml } from "./power";
 import { KEY_LISTS, KEYS, MODIFIERS, byChar, keyFromCode, keyLabel, keysLabel, shortcutKey } from "./keys";
 import { BUTTONS } from "./sources";
 
@@ -572,7 +573,7 @@ export type PlayKind = "keymouse" | "gamepad";
 /** On/off, status, the Desktop | Game mode and auto switch. */
 export function playBarHtml(kind: PlayKind): string {
   return `<section class="tile play-bar">
-    <label class="play-on" title="Turn this output on or off"><input type="checkbox" data-on /><b>${kind === "keymouse" ? "Keyboard &amp; mouse" : "Gamepad"}</b></label>
+    ${powerHtml(kind === "keymouse" ? "Keyboard &amp; mouse" : "Gamepad", "Turn this output on or off")}
     <span class="midi-conn play-conn"><i data-dot></i><b data-status></b></span>
     <span class="bar-group"><span class="muted">Mode</span>
       <span class="segmented" data-modes><button data-mode="desktop" title="Use the Desktop layout">Desktop</button><button data-mode="game" title="Use the Game layout">Game</button></span>

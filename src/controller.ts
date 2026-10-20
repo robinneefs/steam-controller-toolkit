@@ -198,6 +198,8 @@ export interface OscDestinationStatus {
 }
 
 export interface OscStatus {
+  /** The OSC tab's on/off switch; each destination has its own too. */
+  enabled: boolean;
   destinations: OscDestinationStatus[];
   learning: boolean;
   learned: string | null;

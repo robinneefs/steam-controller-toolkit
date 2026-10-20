@@ -36,7 +36,7 @@ pub struct Destination {
 impl Default for Destination {
     fn default() -> Self {
         let preset = Preset::default();
-        Destination { enabled: false, host: "127.0.0.1".into(), port: preset.port.unwrap_or(9000), preset }
+        Destination { enabled: true, host: "127.0.0.1".into(), port: preset.port.unwrap_or(9000), preset }
     }
 }
 
@@ -58,6 +58,8 @@ pub struct DestinationStatus {
 /// What the OSC tab needs, sent in every snapshot.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct OscStatus {
+    /// The OSC tab's on/off switch; each destination has its own too.
+    pub enabled: bool,
     pub destinations: Vec<DestinationStatus>,
     pub learning: bool,
     /// The input picked by the last learn, as a source name.
@@ -75,13 +77,20 @@ pub struct PresetInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
+    /// Configs from before the switch existed had only the destinations' own switches: on.
+    #[serde(default = "yes")]
+    enabled: bool,
     destinations: Vec<Destination>,
 }
 
+fn yes() -> bool {
+    true
+}
+
 impl Default for Config {
-    // Out of the box: one destination, off until the user turns it on.
+    // Out of the box: one destination, with OSC off until the user turns it on.
     fn default() -> Self {
-        Config { destinations: vec![Destination::default()] }
+        Config { enabled: false, destinations: vec![Destination::default()] }
     }
 }
 
@@ -89,6 +98,8 @@ type Lookup = Result<SocketAddr, String>;
 
 struct Dest {
     cfg: Destination,
+    /// Sending: OSC is on and so is this destination.
+    on: bool,
     engine: Engine,
     addr: Option<SocketAddr>,
     lookup: Option<mpsc::Receiver<Lookup>>,
@@ -103,6 +114,7 @@ impl Dest {
         Dest {
             engine: Engine::new(cfg.preset.clone()),
             cfg,
+            on: false,
             addr: None,
             lookup: None,
             last_try: None,
@@ -168,7 +180,7 @@ impl Sockets {
         if msgs.is_empty() {
             return;
         }
-        let (Some(addr), true) = (d.addr, d.cfg.enabled) else {
+        let (Some(addr), true) = (d.addr, d.on) else {
             msgs.clear();
             return;
         };
@@ -198,6 +210,7 @@ impl Sockets {
 }
 
 pub struct OscOut {
+    enabled: bool,
     dests: Vec<Dest>,
     sockets: Sockets,
     learn: Learner,
@@ -225,6 +238,7 @@ impl OscOut {
             }
         });
         let mut out = OscOut {
+            enabled: config.enabled,
             dests: config.destinations.into_iter().map(Dest::new).collect(),
             sockets: Sockets::default(),
             learn: Learner::default(),
@@ -234,7 +248,12 @@ impl OscOut {
             buf: Vec::new(),
             saver,
         };
-        out.dests.iter_mut().filter(|d| d.cfg.enabled).for_each(Dest::lookup);
+        for d in &mut out.dests {
+            d.on = out.enabled && d.cfg.enabled;
+            if d.on {
+                d.lookup();
+            }
+        }
         out
     }
 
@@ -243,10 +262,37 @@ impl OscOut {
     }
 
     fn save_config(&self) {
-        let config = Config { destinations: self.destinations() };
+        let config = Config { enabled: self.enabled, destinations: self.destinations() };
         if let Ok(json) = serde_json::to_string_pretty(&config) {
             let _ = self.saver.send(json);
         }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// The tab's on/off switch: off lets go of everything held and sends nothing, whatever each
+    /// destination's own switch says.
+    pub fn set_enabled(&mut self, on: bool) {
+        self.enabled = on;
+        for i in 0..self.dests.len() {
+            let mut d = self.dests.remove(i);
+            let live = on && d.cfg.enabled;
+            if d.on && !live {
+                self.release_dest(&mut d);
+                d.lookup = None;
+                d.error = None;
+            }
+            let turned_on = live && !d.on;
+            d.on = live;
+            if turned_on {
+                d.error = None;
+                d.lookup();
+            }
+            self.dests.insert(i, d);
+        }
+        self.save_config();
     }
 
     pub fn destinations(&self) -> Vec<Destination> {
@@ -260,26 +306,29 @@ impl OscOut {
         for (i, cfg) in list.into_iter().enumerate() {
             let Some(mut d) = old.get_mut(i).and_then(Option::take) else {
                 let mut d = Dest::new(cfg);
-                if d.cfg.enabled {
+                d.on = self.enabled && d.cfg.enabled;
+                if d.on {
                     d.lookup();
                 }
                 self.dests.push(d);
                 continue;
             };
             let moved = d.cfg.host != cfg.host || d.cfg.port != cfg.port;
-            if moved || !cfg.enabled {
+            let live = self.enabled && cfg.enabled;
+            if moved || !live {
                 self.release_dest(&mut d);
             }
             if d.cfg.preset != cfg.preset {
                 d.engine.set_preset(cfg.preset.clone());
             }
-            let turned_on = cfg.enabled && (!d.cfg.enabled || moved);
+            let turned_on = live && (!d.on || moved);
             d.cfg = cfg;
+            d.on = live;
             if turned_on {
                 d.error = None;
                 d.lookup();
             }
-            if !d.cfg.enabled {
+            if !d.on {
                 d.lookup = None;
                 d.error = None;
             }
@@ -298,7 +347,7 @@ impl OscOut {
         self.learn.process(s);
         let now = self.start.elapsed();
         for d in &mut self.dests {
-            if !d.cfg.enabled && !watched {
+            if !d.on && !watched {
                 continue;
             }
             d.engine.process(s, battery, now, &mut self.buf);
@@ -337,7 +386,7 @@ impl OscOut {
                     Err(mpsc::TryRecvError::Empty) => {}
                     Err(mpsc::TryRecvError::Disconnected) => d.lookup = None,
                 }
-            } else if d.cfg.enabled && d.addr.is_none() && d.last_try.is_none_or(|t| t.elapsed() >= RETRY) {
+            } else if d.on && d.addr.is_none() && d.last_try.is_none_or(|t| t.elapsed() >= RETRY) {
                 d.lookup();
             }
         }
@@ -359,14 +408,15 @@ impl OscOut {
 
     pub fn status(&self) -> OscStatus {
         OscStatus {
+            enabled: self.enabled,
             destinations: self
                 .dests
                 .iter()
                 .map(|d| DestinationStatus {
-                    address: d.addr.filter(|_| d.cfg.enabled).map(|a| a.to_string()),
+                    address: d.addr.filter(|_| d.on).map(|a| a.to_string()),
                     resolving: d.lookup.is_some(),
                     error: d.error.clone(),
-                    rate: if d.cfg.enabled { d.rate } else { 0 },
+                    rate: if d.on { d.rate } else { 0 },
                     levels: d.engine.levels(),
                     values: d.engine.values(),
                 })
@@ -490,6 +540,7 @@ mod tests {
         let (sock, port) = receiver();
         let dir = temp_dir("udp");
         let mut osc = OscOut::new(dir.clone());
+        osc.set_enabled(true);
         let groups = Groups { triggers: false, pads: false, buttons: false, touch: false, tilt: false, gyro: false, status: false, ..Groups::default() };
         let preset = Preset { stream: Stream { groups, ..Stream::default() }, ..Preset::default() };
         osc.set_destinations(vec![Destination { enabled: true, host: "127.0.0.1".into(), port, preset: preset.clone() }]);
@@ -519,6 +570,7 @@ mod tests {
         let (sock, port) = receiver();
         let dir = temp_dir("release");
         let mut osc = OscOut::new(dir.clone());
+        osc.set_enabled(true);
         let preset = builtin_presets().into_iter().find(|p| p.name == "VRChat").unwrap();
         let dest = Destination { enabled: true, host: "localhost".into(), port, preset };
         osc.set_destinations(vec![dest.clone()]);
@@ -543,6 +595,32 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// The tab's switch: off lets go of what was held and sends nothing, on sends again.
+    #[test]
+    fn switching_osc_off_and_on() {
+        let (sock, port) = receiver();
+        let dir = temp_dir("master");
+        let mut osc = OscOut::new(dir.clone());
+        let preset = builtin_presets().into_iter().find(|p| p.name == "VRChat").unwrap();
+        osc.set_destinations(vec![Destination { enabled: true, host: "127.0.0.1".into(), port, preset }]);
+        let s = ControllerState { buttons: sc_core::protocol::buttons::A, ..Default::default() };
+        // Off out of the box: nothing goes out.
+        osc.process(&s, None, false);
+        sock.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+        let mut buf = [0u8; 1024];
+        assert!(sock.recv_from(&mut buf).is_err(), "sent while off");
+        assert_eq!(osc.status().destinations[0].address, None);
+        osc.set_enabled(true);
+        osc.process(&s, None, false);
+        let held: Vec<_> = messages(recv(&sock)).into_iter().map(|m| (m.addr, m.args)).collect();
+        assert!(held.contains(&("/input/Jump".into(), vec![OscType::Int(1)])));
+        osc.set_enabled(false);
+        let released: Vec<_> = messages(recv(&sock)).into_iter().map(|m| (m.addr, m.args)).collect();
+        assert!(released.contains(&("/input/Jump".into(), vec![OscType::Int(0)])), "{released:?}");
+        assert!(osc.destinations()[0].enabled, "the destination's own switch stays on");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     /// A disabled destination does no work unless the OSC tab is in view (its values show there).
     #[test]
     fn disabled_runs_only_while_watched() {
@@ -562,7 +640,9 @@ mod tests {
         let dir = temp_dir("config");
         let mut osc = OscOut::new(dir.clone());
         assert_eq!(osc.destinations().len(), 1);
-        assert!(!osc.destinations()[0].enabled);
+        // First run: one destination, ready, with OSC itself off.
+        assert!(!osc.enabled());
+        assert!(osc.destinations()[0].enabled);
         let qlab = osc.load_preset("QLab", true).unwrap();
         osc.set_destinations(vec![
             Destination::default(),
@@ -580,6 +660,9 @@ mod tests {
         assert_eq!(saved.destinations[1].preset.name, "QLab");
         let restored = OscOut::new(dir.clone());
         assert_eq!(restored.destinations(), osc.destinations());
+        // A config from before the on/off switch: on, so its destinations keep sending.
+        fs::write(dir.join("config.json"), r#"{"destinations":[]}"#).unwrap();
+        assert!(OscOut::new(dir.clone()).enabled());
         // Saved presets list after the built-in ones, with their port.
         osc.save_preset("Mine", Preset { port: Some(1234), ..Preset::default() }).unwrap();
         let list = osc.list_presets();

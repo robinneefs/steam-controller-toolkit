@@ -80,7 +80,7 @@ export class SettingsTab implements Tab {
       `<b>MIDI</b> ${midi}`,
       `<b>OSC</b> ${osc.length ? `sending to ${osc.join(", ")}` : "off"}`,
       ...(snap.play
-        ? [`<b>Keys &amp; mouse</b> ${escape(playStatusText(snap.play, "keymouse")[1])}`, `<b>Gamepad</b> ${escape(playStatusText(snap.play, "gamepad")[1])}`]
+        ? [`<b>Keys &amp; mouse</b> ${escape(lower(playStatusText(snap.play, "keymouse")[1]))}`, `<b>Gamepad</b> ${escape(lower(playStatusText(snap.play, "gamepad")[1]))}`]
         : []),
       `<b>Recorder</b> ${snap.tape.recording ? "recording" : "idle"}`,
     ];
@@ -98,4 +98,10 @@ export class SettingsTab implements Tab {
     el.textContent = text;
     el.hidden = !text;
   }
+}
+
+/** The values in "What runs in the background" all start in lower case, like "off". */
+function lower(text: string): string {
+  // Not names that are all capitals at the start ("ViGEmBus" stays as it is).
+  return /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
 }

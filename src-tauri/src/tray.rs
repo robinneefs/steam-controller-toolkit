@@ -246,6 +246,7 @@ impl TrayLines {
         };
         let sending: Vec<&str> = osc.destinations.iter().filter_map(|d| d.address.as_deref()).collect();
         let osc = match sending.as_slice() {
+            _ if !osc.enabled => "OSC: off".to_string(),
             [] if osc.destinations.iter().any(|d| d.resolving || d.error.is_some()) => "OSC: not connected".to_string(),
             [] => "OSC: off".to_string(),
             [one] => format!("OSC: sending to {one}"),

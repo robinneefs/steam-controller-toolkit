@@ -3,6 +3,7 @@ import type { OscArg, OscDestination, OscDestinationStatus, OscGroups, OscMappin
 import { addHelp, helpIcon } from "../help";
 import type { Tab } from "./tab";
 import { ICONS } from "./icons";
+import { powerHtml } from "./power";
 import { BUTTONS, SOURCE_LABELS, SOURCES } from "./sources";
 
 addHelp({
@@ -186,6 +187,7 @@ export class OscTab implements Tab {
   private open = new Set<number>();
   private lastValues = "";
   private lastStatus: string[] = [];
+  private lastPower = "";
   private deleteArmed = false;
   private armTimer: number | undefined;
 
@@ -194,11 +196,15 @@ export class OscTab implements Tab {
     root.innerHTML = `
       <div class="osc">
         <section class="tile osc-dests">
-          <h3><span class="h3-title">Destinations ${helpIcon("osc-dests")}</span>
+          <div class="out-bar">
+            ${powerHtml("OSC", "Turn OSC on or off")}
+            <span class="midi-conn" data-osc-conn><i></i>Off</span>
             <span class="head-actions">
+              <span class="h3-title muted">Destinations ${helpIcon("osc-dests")}</span>
               <button class="mini guide-btn" data-guide title="How to receive OSC in your app">Setup guide</button>
               <button class="mini" data-add-dest title="Send to another app or computer as well">+ Add</button>
-            </span></h3>
+            </span>
+          </div>
           <div class="dest-list" data-dests></div>
         </section>
 
@@ -285,6 +291,9 @@ export class OscTab implements Tab {
       if (el.type === "range" || el.type === "number") this.mapFieldChanged(el);
     });
     list.addEventListener("click", (e) => this.mapClicked(e.target as Element));
+    this.q<HTMLInputElement>("[data-on]").addEventListener("change", (e) =>
+      invoke("osc_set_enabled", { on: (e.target as HTMLInputElement).checked }).catch((err) => this.flash(String(err))),
+    );
 
     this.init();
   }
@@ -305,8 +314,10 @@ export class OscTab implements Tab {
 
   update(snap: Snapshot): void {
     const o = snap.osc;
-    if (!o || !this.dests.length) return;
-    this.dests.forEach((d, i) => this.renderDestStatus(i, d, o.destinations[i]));
+    if (!o) return;
+    this.renderPower(o.enabled, o.destinations);
+    if (!this.dests.length) return;
+    this.dests.forEach((d, i) => this.renderDestStatus(i, d, o.destinations[i], o.enabled));
     const st = o.destinations[this.sel];
     const rate = st?.address ? `${st.rate} msg/s` : "";
     const rateEl = this.q("[data-rate]");
@@ -385,9 +396,30 @@ export class OscTab implements Tab {
     this.q("[data-dests]").classList.toggle("scroll", this.dests.length > 3);
   }
 
-  private renderDestStatus(i: number, d: OscDestination, st: OscDestinationStatus | undefined): void {
+  /** The switch and what OSC as a whole is doing. */
+  private renderPower(on: boolean, list: OscDestinationStatus[]): void {
+    const input = this.q<HTMLInputElement>("[data-on]");
+    if (input.checked !== on) input.checked = on;
+    const sending = list.filter((d) => d.address);
+    const html = !on
+      ? `<i></i>Off`
+      : sending.length
+        ? `<i class="ok"></i>Sending to <b>${sending.length > 1 ? `${sending.length} destinations` : escape(sending[0].address!)}</b>`
+        : list.some((d) => d.error)
+          ? `<i class="warn"></i><span>Not sending</span>`
+          : this.dests.some((d) => d.enabled)
+            ? `<i></i>Looking up the host…`
+            : `<i></i>On · tick a destination to send to it`;
+    if (html === this.lastPower) return;
+    this.lastPower = html;
+    this.q("[data-osc-conn]").innerHTML = html;
+  }
+
+  private renderDestStatus(i: number, d: OscDestination, st: OscDestinationStatus | undefined, on: boolean): void {
     const [cls, text, title] = !d.enabled
       ? ["", "Off", "Tick the box to send"]
+      : !on
+        ? ["", "OSC is off", "Turn OSC on to send"]
       : st?.error
         ? ["warn", escape(st.error), st.error]
         : st?.resolving || !st?.address

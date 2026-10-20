@@ -271,6 +271,12 @@ fn osc_set_destinations(destinations: Vec<Destination>, osc: State<'_, SharedOsc
     osc.lock().unwrap().set_destinations(destinations);
 }
 
+/// The OSC tab's on/off switch.
+#[tauri::command]
+fn osc_set_enabled(on: bool, osc: State<'_, SharedOsc>) {
+    osc.lock().unwrap().set_enabled(on);
+}
+
 /// Start (or with `on` false, stop) waiting for an input to move; the snapshot reports it.
 #[tauri::command]
 fn osc_learn(on: bool, osc: State<'_, SharedOsc>) {
@@ -597,6 +603,7 @@ pub fn run() {
             midi_reveal_presets,
             osc_destinations,
             osc_set_destinations,
+            osc_set_enabled,
             osc_learn,
             osc_list_presets,
             osc_load_preset,
@@ -729,6 +736,7 @@ mod screenshot_data {
                     ..Default::default()
                 };
                 fold.snap.osc = OscStatus {
+                    enabled: true,
                     destinations: dests
                         .iter()
                         .zip(&osc_engines)
