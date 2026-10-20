@@ -40,6 +40,9 @@ npm run tauri build -- --no-bundle
 cargo run --manifest-path tools/release-check/Cargo.toml
 ```
 
+To run only some sections, name them: `cargo run --manifest-path tools/release-check/Cargo.toml -- --only gyro,modes`
+(sections: `gamepad`, `gyro`, `keymouse`, `modes`, `osc`, `tray`).
+
 To check another build, pass its path: `cargo run --manifest-path tools/release-check/Cargo.toml -- path\to\steam-controller-app.exe`.
 An app already running with the debugging port (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`,
 e.g. under `npm run tauri dev`) is used as it is.

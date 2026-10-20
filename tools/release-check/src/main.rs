@@ -128,9 +128,8 @@ mod checks {
             self.wait_neutral();
             let start = Instant::now();
             while start.elapsed() < STEP_TIME {
+                // Judged on the first report that shows it: a quick tap is gone a moment later.
                 if let Some(g) = input::pad(self.pad).filter(|g| seen(g)) {
-                    std::thread::sleep(Duration::from_millis(120));
-                    let g = input::pad(self.pad).unwrap_or(g);
                     let pass = ok(&g);
                     self.result(name, pass, input::fmt_pad(&g));
                     std::thread::sleep(Duration::from_millis(800));
@@ -144,11 +143,37 @@ mod checks {
         /// The first strong deflection of an axis, which must have the sign of `want` (moving back
         /// afterwards deflects the other way, so only the first one counts).
         fn axis_step(&mut self, name: &str, prompt: &str, axis: fn(&input::XGamepad) -> i32, want: i32) {
+            self.axis_step_at(name, prompt, axis, want, 9000);
+        }
+
+        /// Gyro aim moves the stick by turning speed, so what counts is the net turn over the step
+        /// (the stick summed over time): a little backswing first doesn't flip it.
+        fn gyro_step(&mut self, name: &str, prompt: &str, axis: fn(&input::XGamepad) -> i32, want: i32) {
+            self.prompt(prompt);
+            self.wait_neutral();
+            let (mut sum, mut peak) = (0f64, 0i32);
+            let end = Instant::now() + STEP_TIME;
+            while Instant::now() < end {
+                if let Some(g) = input::pad(self.pad) {
+                    let v = axis(&g);
+                    sum += v as f64 / 32767.0 * 0.005;
+                    if v.abs() > peak.abs() {
+                        peak = v;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let moved = peak.abs() > 5000;
+            let detail = format!("net {sum:+.2} (stick-seconds), strongest {peak:+}");
+            self.result(name, moved && (sum.signum() as i32) == want, if moved { detail } else { format!("barely moved: {detail}") });
+        }
+
+        fn axis_step_at(&mut self, name: &str, prompt: &str, axis: fn(&input::XGamepad) -> i32, want: i32, threshold: i32) {
             self.prompt(prompt);
             self.wait_neutral();
             let start = Instant::now();
             while start.elapsed() < STEP_TIME {
-                if let Some(g) = input::pad(self.pad).filter(|g| axis(g).abs() > 9000) {
+                if let Some(g) = input::pad(self.pad).filter(|g| axis(g).abs() > threshold) {
                     self.result(name, axis(&g).signum() == want, input::fmt_pad(&g));
                     std::thread::sleep(Duration::from_millis(1500));
                     return;
@@ -182,8 +207,17 @@ mod checks {
         }
     }
 
+    /// `--only a,b`: the sections to run.
+    fn only() -> Vec<String> {
+        let args: Vec<String> = std::env::args().collect();
+        args.iter().position(|a| a == "--only").and_then(|i| args.get(i + 1)).map(|v| v.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default()
+    }
+
+    /// The app to start: a path given on the command line, else the release build.
     fn app_exe() -> PathBuf {
-        std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let only_value = args.iter().position(|a| a == "--only").map(|i| i + 1);
+        args.iter().enumerate().find(|(i, a)| *a != "--only" && Some(*i) != only_value).map(|(_, a)| PathBuf::from(a)).unwrap_or_else(|| {
             let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             here.join("../../target/release/steam-controller-app.exe")
         })
@@ -231,7 +265,7 @@ mod checks {
         let saved_osc_on = snap["osc"]["enabled"].as_bool().unwrap_or(false);
         let log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("last-run.log");
         let mut run = Run { page, log: File::create(&log_path).map_err(|e| e.to_string())?, results: vec![], hooks: input::start_hooks()?, pad: 0 };
-        let outcome = steps(&mut run);
+        let outcome = steps(&mut run, &only());
         // Restore, whatever happened.
         input::set_block(false);
         let restore = (|| -> Result<(), String> {
@@ -259,9 +293,39 @@ mod checks {
         Ok(failed == 0)
     }
 
-    fn steps(r: &mut Run) -> Result<(), String> {
-        // ---------- Gamepad ----------
+    /// Runs every section, or only those named with `--only gamepad,gyro,keymouse,modes,osc,tray`.
+    fn steps(r: &mut Run, only: &[String]) -> Result<(), String> {
+        let want = |s: &str| only.is_empty() || only.iter().any(|o| o == s);
+        if (want("gamepad") || want("gyro")) && !find_pad(r)? {
+            return Ok(());
+        }
+        if want("gamepad") {
+            gamepad(r)?;
+        }
+        if want("gyro") {
+            gyro(r)?;
+        }
+        if want("keymouse") {
+            keymouse(r)?;
+        }
+        if want("modes") {
+            modes(r)?;
+        }
+        if want("osc") {
+            osc(r)?;
+        }
+        if want("tray") {
+            tray(r)?;
+        }
+        Ok(())
+    }
+
+    /// Turns the gamepad on and finds its XInput slot; false if it never appears.
+    fn find_pad(r: &mut Run) -> Result<bool, String> {
         r.say("=== Gamepad (Standard layout) ===");
+        // Off first, so the pad that appears next is the app's even if it was on already.
+        r.outputs(false, None)?;
+        std::thread::sleep(Duration::from_millis(1500));
         let before = input::pads();
         r.outputs(false, Some("Standard"))?;
         r.page.show_tab("gamepad")?;
@@ -278,7 +342,7 @@ mod checks {
         let Some(pad) = pad else {
             let status = r.play()?["gamepad"].clone();
             r.result("Virtual pad appears in XInput", false, format!("no new pad (status: {status})"));
-            return Ok(());
+            return Ok(false);
         };
         r.pad = pad;
         std::thread::sleep(Duration::from_millis(500));
@@ -287,6 +351,11 @@ mod checks {
         r.result("Virtual pad appears in XInput, centred", centred, format!("XInput slot {pad}: {}", input::fmt_pad(&g)));
         let player = r.play()?["gamepad"]["player"].clone();
         r.result("Status shows the player", player.is_number(), format!("player {player}"));
+        Ok(true)
+    }
+
+    fn gamepad(r: &mut Run) -> Result<(), String> {
+        r.outputs(false, Some("Standard"))?;
 
         for &(name, bit) in PAD_BUTTONS {
             r.pad_step(&format!("Pad: {name}"), &format!("Press {name} once"), |g| g.wButtons != 0, move |g| g.wButtons == bit);
@@ -301,23 +370,29 @@ mod checks {
         r.say("\n>> Rumble: the controller should buzz twice, first the left (large) motor, then the right.");
         std::thread::sleep(Duration::from_millis(800));
         for (l, rr) in [(40000, 0), (0, 40000)] {
-            input::rumble(pad, l, rr);
+            input::rumble(r.pad, l, rr);
             std::thread::sleep(Duration::from_millis(1000));
-            input::rumble(pad, 0, 0);
+            input::rumble(r.pad, 0, 0);
             std::thread::sleep(Duration::from_millis(600));
         }
         r.ask("Rumble reaches the controller", "Did it buzz twice?");
+        Ok(())
+    }
 
+    fn gyro(r: &mut Run) -> Result<(), String> {
         // ---------- Gyro ----------
         r.say("\n=== Gyro (hold the controller as for a game) ===");
         r.outputs(false, Some("Gyro aim (stick)"))?;
         std::thread::sleep(Duration::from_millis(500));
-        r.axis_step("Gyro aim: turn right = right", "Rest your right thumb on the right stick (don't push) and TURN the controller to the RIGHT", |g| g.sThumbRX as i32, 1);
-        r.axis_step("Gyro aim: raise front = up", "Thumb on the right stick: RAISE the FRONT (trigger side) to aim up", |g| g.sThumbRY as i32, 1);
+        r.gyro_step("Gyro aim: turn right = right", "Rest your right thumb on the right stick (don't push), TURN the controller to the RIGHT and stay turned", |g| g.sThumbRX as i32, 1);
+        r.gyro_step("Gyro aim: raise front = up", "Thumb on the right stick: RAISE the FRONT (trigger side) to aim up, and stay there", |g| g.sThumbRY as i32, 1);
         r.outputs(false, Some("Racing (tilt to steer)"))?;
         std::thread::sleep(Duration::from_millis(500));
         r.axis_step("Racing: lean right = steer right", "LEAN the controller to the RIGHT like a steering wheel, and hold it there", |g| g.sThumbLX as i32, 1);
+        Ok(())
+    }
 
+    fn keymouse(r: &mut Run) -> Result<(), String> {
         // ---------- Keyboard & mouse ----------
         r.say("\n=== Keyboard & mouse (Desktop layout; what it sends is caught and blocked) ===");
         r.outputs(true, None)?;
@@ -333,9 +408,13 @@ mod checks {
         r.keys("K&M: Menu is Win", "Press Menu (three lines) once", "+Win -Win");
         r.keys("K&M: L4 is Ctrl+Z, by letter", "Press L4 (upper left back button) once", "+Ctrl +Z -Z -Ctrl");
         r.keys("K&M: R5 is Ctrl+V", "Press R5 (lower right back button) once", "+Ctrl +V -V -Ctrl");
+        Ok(())
+    }
 
+    fn modes(r: &mut Run) -> Result<(), String> {
         // ---------- Modes ----------
         r.say("\n=== Modes ===");
+        r.outputs(true, None)?;
         r.prompt("HOLD the STEAM button for 2 seconds, then let go");
         let mut modes: Vec<String> = vec![];
         let end = Instant::now() + STEP_TIME;
@@ -350,10 +429,10 @@ mod checks {
         r.ask("Steam: a click you can feel", "Did you feel ONE click when it switched?");
         r.invoke("play_set_mode", json!({ "mode": "desktop" }))?;
         r.invoke("play_set_auto_switch", json!({ "on": true }))?;
-        r.prompt("Put something FULL SCREEN in front (a browser with F11, or a video) for a few seconds, then leave full screen and come back here");
+        r.prompt("Within 30 seconds: put something FULL SCREEN in front (a browser with F11, or a video) for a few seconds, then leave full screen");
         let mut seen_game = None;
         let mut back = false;
-        let end = Instant::now() + Duration::from_secs(15);
+        let end = Instant::now() + Duration::from_secs(30);
         while Instant::now() < end && !back {
             let p = r.play()?;
             if p["mode"] == "game" && seen_game.is_none() {
@@ -363,7 +442,10 @@ mod checks {
             std::thread::sleep(Duration::from_millis(100));
         }
         r.result("Auto switch: full screen is Game, leaving it is Desktop", seen_game.is_some() && back, format!("full-screen app: {}, back to Desktop: {back}", seen_game.as_deref().unwrap_or("none seen")));
+        Ok(())
+    }
 
+    fn osc(r: &mut Run) -> Result<(), String> {
         // ---------- OSC on/off ----------
         r.say("\n=== OSC switch (checked over UDP) ===");
         r.outputs(false, None)?;
@@ -394,7 +476,10 @@ mod checks {
         r.prompt("Move both sticks around again (OSC is off now)");
         let off = count(&sock, 4);
         r.result("OSC off: nothing arrives", off == 0, format!("{off} packets in 4 s"));
+        Ok(())
+    }
 
+    fn tray(r: &mut Run) -> Result<(), String> {
         // ---------- Tray ----------
         r.say("\n=== Tray ===");
         r.outputs(true, None)?;

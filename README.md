@@ -76,8 +76,9 @@ Logic…), to move effect knobs or play notes:
 
 ![MIDI tab: output, mappings with live meters, a note grid on the right trackpad and the messages sent](docs/screenshots/midi.png)
 
-**Where the MIDI goes**: the app makes its own **Steam Controller** MIDI port, the default
-output; pick it as a MIDI input in your DAW and you're done.
+**Where the MIDI goes**: turn MIDI on with the switch at the top of the tab. The app makes its
+own **Steam Controller** MIDI port, the output it picks first; pick it as a MIDI input in your DAW
+and you're done.
 
 - **macOS**: a CoreMIDI port, on every macOS version. Logic and GarageBand use it
   automatically; other DAWs list it as an input.
@@ -113,7 +114,8 @@ desks, VJ software, DAWs. Several apps can get it at once, on this computer or o
   invert, toggle, only while held), to any address as a float, int or bool, with an output range
   and fixed values before it (e.g. a track number). It sends when the value changes, 1/0 on
   press and release, or just the address once per press (QLab's `/go`). **Learn** picks the input.
-- **Destinations**: each a host and port with its own preset; send to several at once.
+- **Destinations**: each a host and port with its own preset and on/off box; send to several at
+  once. The OSC switch at the top turns them all off at once.
 - **Presets** for TouchDesigner, Max/MSP, Pure Data, Processing, openFrameworks, SuperCollider,
   Sonic Pi, Unity (OscJack), Unreal, Godot (godOSC), Chataigne, Open Stage Control, Isadora,
   VDMX, QLC+, MadMapper, Millumin, Resolume Arena/Avenue, QLab, Reaper, Ableton Live
@@ -134,6 +136,10 @@ desks, VJ software, DAWs. Several apps can get it at once, on this computer or o
 Use the controller as a keyboard and mouse, on the desktop and in games, with nothing to install
 (Windows and Linux; not on macOS yet).
 
+- **Two modes, Desktop and Game**, each with its own layout. The **Steam button** switches
+  between them (you feel a click), and with *Full-screen apps use Game* on, a full-screen app
+  switches to Game and leaving it switches back; a switch by hand holds until another app goes
+  full screen.
 - **Two layouts**, one for each mode: a **Desktop** layout (by default: right pad and right stick
   move the pointer, the triggers click, the left stick and pad scroll, the grips undo, redo, copy
   and paste, View is Win+Tab) and a **Game** layout (by default: WASD on the left stick, mouse
@@ -166,7 +172,8 @@ rumble reaches the controller.
 - **Gyro is optional**, never required: always on, or only while your thumb rests on the right
   stick, a trigger is pulled, or a button is held or toggled. Drift is calibrated whenever the
   controller lies still.
-- A live drawing shows what games see, with the player number and rumble.
+- A live drawing of an Xbox 360 controller shows what games see, with the player number and
+  rumble.
 - **Windows** has no way for an app to add a game controller without a driver (Windows' own
   injection API is ignored by games; we tested it). The tab explains this and installs the
   open-source [ViGEmBus](https://github.com/nefarius/ViGEmBus) driver (BSD-3, signed, also used
@@ -180,11 +187,10 @@ rumble reaches the controller.
 
 ![Gamepad tab on Windows without the driver: why it's needed, what comes with it, and the Install button](docs/screenshots/gamepad-driver.png)
 
-**Desktop and Game modes**, shared by both tabs: the **Steam button** switches between them (you
-feel a click), and with *Full-screen apps use Game* on, a full-screen app switches to Game and
-leaving it switches back; a switch by hand holds until another app goes full screen. With both
-outputs on, the controller is a mouse on the desktop and a gamepad in games. Both work from the
-tray. Meant for use **without Steam**: with Steam running, its Desktop Layout sends mouse input
+**Keyboard & mouse and the gamepad together**: the gamepad is for games, so it has no modes of
+its own. With both on, the controller is a mouse on the desktop and a gamepad in games: Keyboard
+& mouse's Game mode (the Steam button, or a full-screen app) hands over to the gamepad. Both work
+from the tray. Meant for use **without Steam**: with Steam running, its Desktop Layout sends mouse input
 too, so input arrives twice. Apps running as administrator don't receive the keyboard & mouse
 input unless the Toolkit runs as administrator too.
 
@@ -221,6 +227,8 @@ Record a session and play it back without a controller:
 ### Everywhere
 
 - The top bar shows the connection (e.g. *Puck · slot 1*), report rate and battery.
+- **Every output (MIDI, OSC, keyboard & mouse, gamepad) has the same on/off switch** at the top
+  of its tab. They all start off, and each remembers whether it was on.
 - **Power button**: turns the controller off (click twice to confirm).
 - **Click any value to copy it**, or *Copy all* for a whole report as hex.
 - A warning appears while Steam is running (see [Requirements](#requirements)).
