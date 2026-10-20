@@ -2,6 +2,7 @@
   "name": "steam-controller-app",
   "private": true,
   "version": "0.2.1",
+  "releaseStage": "beta",
   "type": "module",
   "scripts": {
     "dev": "vite",

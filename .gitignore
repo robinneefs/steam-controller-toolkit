@@ -23,3 +23,7 @@ tools/midi2-bindings/Cargo.lock
 
 # Snapshots for tools/screenshots (generated from a recording)
 tools/screenshots/snapshots.json
+
+# Release checks (tools/release-check)
+tools/release-check/target/
+tools/release-check/Cargo.lock

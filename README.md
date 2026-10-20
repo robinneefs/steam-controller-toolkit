@@ -9,6 +9,11 @@
   Windows · macOS · Linux
 </p>
 
+> **Beta.** The app is young and has had little testing: expect bugs. It's tested on Windows 11
+> with the controller's wireless receiver; the macOS and Linux builds have never run on a real
+> machine yet. Please [report what goes wrong](https://github.com/robinneefs/steam-controller-toolkit/issues),
+> ideally with a recording from the Recorder tab.
+
 <p align="center">
   <a href="https://www.youtube.com/watch?v=QCvgsTT6-FI">
     <img src="https://img.youtube.com/vi/QCvgsTT6-FI/hqdefault.jpg" alt="Watch the Steam Controller Toolkit demo on YouTube" width="640" />
@@ -263,8 +268,9 @@ page. The portable versions run without installing:
 
 Installers (`.msi`/setup `.exe`, `.dmg`, `.deb`/`.rpm`) are there too if you prefer them.
 
-What changed in each version is in the [changelog](CHANGELOG.md). The version you're running is
-shown at the bottom right of the window and in the About tab.
+Every version so far is a **beta** (see the note at the top). What changed in each version is in
+the [changelog](CHANGELOG.md). The version you're running is shown at the bottom right of the
+window and in the About tab.
 
 ## Building from source
 
@@ -291,9 +297,15 @@ npm run tauri build
 
 Versions follow [semantic versioning](https://semver.org) (while it's 0.x: new features bump the
 minor version, fixes the patch version). `package.json` holds the version; the app and the Rust
-crate take it from there.
+crate take it from there. Its `releaseStage` (`"beta"`) is shown after the version everywhere: in
+the app, the release name, the portable file names, and the changelog headings; CI marks such a
+release as a pre-release. Remove it once the app leaves beta.
 
-1. Add the changes under a new heading in [`CHANGELOG.md`](CHANGELOG.md) and commit.
+Before a release, run the release checks on Windows with the controller connected (about ten
+minutes; see [`tools/release-check`](tools/release-check/README.md)).
+
+1. Add the changes under a new heading in [`CHANGELOG.md`](CHANGELOG.md), with the stage after
+   the date (`## [0.3.0] - 2026-11-01 (beta)`), and commit.
 2. Bump, commit and tag in one go (this also updates `src-tauri/Cargo.toml` and `Cargo.lock`):
 
 ```bash
@@ -339,6 +351,7 @@ npm run probe -- --raw --seconds 10
 | `public/models` | The 3D controller model, its license and credit |
 | `third_party/hidapi` | hidapi 2.6.7 with a one-line fix (see `docs/PROTOCOL.md`) |
 | `tools/screenshots` | Takes the README screenshots: the real UI fed a recording, in headless Edge/Chrome |
+| `tools/release-check` | Guided checks of the outputs with the controller, run on Windows before a release |
 | `tools/sync-version.mjs` | Copies the version from `package.json` to the Rust crate (run by `npm version`) |
 | `CHANGELOG.md` | What changed in each version |
 | `tools/midi2-bindings` | Generates the Rust bindings for Windows MIDI Services (`src-tauri/src/midi2_bindings.rs`) |

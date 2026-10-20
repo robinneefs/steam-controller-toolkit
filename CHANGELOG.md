@@ -5,6 +5,9 @@ All notable changes to Steam Controller Toolkit. The app follows
 version (0.2.0) and fixes bump the patch version (0.2.1). See
 [Releasing](README.md#releasing) for how to make a version.
 
+Every version so far is a **beta**: tested on Windows 11 with the wireless receiver, with the
+macOS and Linux builds untested. Expect bugs, and please report them.
+
 ## [Unreleased]
 
 ### Added
@@ -54,6 +57,8 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 
 ### Changed
 
+- The app is labelled **beta** wherever its version shows: the bottom of the window, the About
+  tab, the release name and the download file names.
 - The tabs moved from the top bar to a sidebar, grouped as Input, Output and Tools, so new tools
   have room. It shows names from 1100 px wide and icons only below that (hover for the name);
   Collapse picks icons at any size; below 1100 px, Expand opens the sidebar over the tab. Dots show MIDI and OSC sending and the Recorder recording or replaying.
@@ -76,7 +81,7 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
   and OSC mappings of one fired on the other. View is the button with two squares on the left,
   Menu the one with three lines on the right. Mappings made with the wrong name need swapping.
 
-## [0.2.1] - 2026-10-19
+## [0.2.1] - 2026-10-19 (beta)
 
 ### Changed
 
@@ -94,7 +99,7 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 - Steadier live updates: the UI now gets fresh state at an even ~62 per second (was ~53, with
   some frames skipped).
 
-## [0.2.0] - 2026-10-18
+## [0.2.0] - 2026-10-18 (beta)
 
 ### Added
 
@@ -128,7 +133,7 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 - Haptics played on the wrong side.
 - Recorder: Show and Delete could freeze the app.
 
-## [0.1.0] - 2026-10-18
+## [0.1.0] - 2026-10-18 (beta)
 
 First release.
 

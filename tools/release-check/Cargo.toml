@@ -1,0 +1,21 @@
+[package]
+name = "release-check"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Not part of the app's workspace: run it by hand before a release (see README.md).
+[workspace]
+
+[dependencies]
+serde_json = "1"
+tungstenite = "0.24"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_XboxController",
+    "Win32_UI_WindowsAndMessaging",
+] }

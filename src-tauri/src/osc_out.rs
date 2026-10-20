@@ -268,6 +268,7 @@ impl OscOut {
         }
     }
 
+    #[cfg(test)]
     pub fn enabled(&self) -> bool {
         self.enabled
     }

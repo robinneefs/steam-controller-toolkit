@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { versionLabel } from "./version";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./controller";
@@ -304,7 +305,7 @@ getCurrentWebview()
   .catch(() => {});
 
 getVersion()
-  .then((v) => (document.querySelector("#footer-info")!.textContent = `v${v}`))
+  .then((v) => (document.querySelector("#footer-info")!.textContent = `v${versionLabel(v)}`))
   .catch(() => {});
 
 onSnapshot((snap) => {

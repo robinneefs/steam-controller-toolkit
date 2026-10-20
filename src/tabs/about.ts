@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { versionLabel } from "../version";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Tab } from "./tab";
 import { ICONS } from "./icons";
@@ -79,7 +80,7 @@ export class AboutTab implements Tab {
       }),
     );
     getVersion()
-      .then((v) => (root.querySelector("[data-version]")!.textContent = `Version ${v}. `))
+      .then((v) => (root.querySelector("[data-version]")!.textContent = `Version ${versionLabel(v)}. `))
       .catch(() => {});
   }
 }

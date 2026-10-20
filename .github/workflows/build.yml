@@ -52,6 +52,12 @@ jobs:
 
       - run: npm ci
 
+      # The release stage from package.json ("beta"), shown after the version everywhere.
+      - name: Read the release stage
+        id: meta
+        shell: bash
+        run: echo "stage=$(node -p "require('./package.json').releaseStage || ''")" >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v0
         id: tauri
         env:
@@ -60,16 +66,18 @@ jobs:
           args: ${{ matrix.args }}
           # Only set on tag pushes; on manual runs nothing is released.
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: Steam Controller Toolkit ${{ github.ref_name }}
+          releaseName: Steam Controller Toolkit ${{ github.ref_name }} ${{ steps.meta.outputs.stage }}
           releaseBody: See the assets below to download and install.
           releaseDraft: true
+          # A beta goes out as a pre-release on GitHub.
+          prerelease: ${{ steps.meta.outputs.stage != '' }}
 
       # Versions that run without installing: the bare .exe (the frontend is embedded in it;
       # WebView2 ships with Windows 10/11), the .app zipped, and the AppImage.
       - name: Make portable builds
         shell: bash
         run: |
-          version=$(node -p "require('./package.json').version")
+          version=$(node -p "const p = require('./package.json'); p.releaseStage ? p.version + '-' + p.releaseStage : p.version")
           mkdir portable
           case "${{ matrix.name }}" in
             windows)
