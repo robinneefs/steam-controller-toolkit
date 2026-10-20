@@ -57,6 +57,13 @@ macOS and Linux builds untested. Expect bugs, and please report them.
 
 ### Changed
 
+- Every output (MIDI, OSC, Keyboard & mouse, Gamepad) starts its tab with the same on/off
+  switch. They all start off, and each remembers whether it was on. MIDI used to send to its own
+  port from the first start; its switch now turns it on with the port you picked. OSC's switch
+  turns every destination off at once; each keeps its own box too.
+- Visualizer, Buttons: the Steam button sits above ···, with View and Menu either side, as on the
+  controller; the right grips mirror the left.
+- Settings: the values under "What runs in the background" are all lower case.
 - The app is labelled **beta** wherever its version shows: the bottom of the window, the About
   tab, the release name and the download file names.
 - The tabs moved from the top bar to a sidebar, grouped as Input, Output and Tools, so new tools
