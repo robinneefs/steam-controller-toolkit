@@ -10,7 +10,7 @@ Branding: logo master is `assets/logo.png` (1024px); app icons in `src-tauri/ico
 generated from it with `npx tauri icon assets/logo.png` (delete the android/ios folders after);
 `public/logo.png` is the in-app/favicon copy. Code is MIT (`LICENSE`); the protocol is
 documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`. The README
-links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
+shows one screenshot per tab from
 `docs/screenshots/` (taken at the default 1280 x 720 window, 1.5x); retake them when a tab's look changes
 with `tools/screenshots` (the real UI fed a real recording through a mock backend, captured by headless
 Edge/Chrome; see its README). The MIDI and OSC tabs have two shots each: `midi.png`, `midi-guide.png`, `osc.png`, `osc-guide.png`; the Gamepad tab has `gamepad.png` and `gamepad-driver.png` (Windows without ViGEmBus).
@@ -19,7 +19,14 @@ Versioning: semver, `package.json` is the single source (`tauri.conf.json` point
 `tools/sync-version.mjs` copies it to `src-tauri/Cargo.toml` + `Cargo.lock` as npm's `version` script).
 Every user-visible change gets a line in `CHANGELOG.md` under the next version; releasing is
 `npm version minor|patch` then `git push --follow-tags` (see README, Releasing). Never push tags
-without the user asking: a `v*` tag makes CI draft a release.
+without the user asking: a `v*` tag makes CI draft a release. The app is a **beta**: `releaseStage`
+in `package.json` ("beta") follows the version wherever it shows (`src/version.ts` for the footer
+and About tab; CI's release name, pre-release flag and portable file names; the CHANGELOG headings
+as `## [x.y.z] - date (beta)`). Installer names can't carry it (MSI versions are numbers only).
+Before a release, run `tools/release-check` on Windows with the controller (see its README;
+`--only` runs some sections): a guided run through the outputs that judges each step itself and
+restores the output settings. Docs (README, CHANGELOG, CLAUDE.md, screenshots) change only when
+the user asks.
 
 ## Stack
 
@@ -48,7 +55,9 @@ without the user asking: a `v*` tag makes CI draft a release.
   `Mapping`s (source string -> shaping -> `Target` message) plus a `PadGrid` per trackpad;
   `Engine::process` turns each state report into messages, sent only when the value they carry
   changes. `midi_out.rs` owns the port (`midir`), `config.json` and saved presets in
-  `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`; releasing turns held notes off. Ports open
+  `<app data dir>/midi`, and the `MidiStatus` in `Snapshot.midi`; releasing turns held notes off. MIDI
+  starts off (output `Off`); the tab's switch turns it on with the port last picked (remembered in
+  localStorage, else our own port, never the experimental Windows one by itself). Ports open
   on a thread of their own (`tick` picks up the result), never on the event loop. macOS (CoreMIDI)
   and Linux (ALSA) get a virtual "Steam Controller" port from midir; not yet run on those systems,
   only built in CI. Windows gets one from Windows MIDI Services (`midi_win.rs`, app-to-app MIDI)
@@ -65,8 +74,10 @@ without the user asking: a `v*` tag makes CI draft a release.
   `/connected 0`, once. `osc_out.rs` owns the destinations (host:port + preset each), one
   non-blocking UDP socket per address family (`rosc` encodes), host lookups on a thread (IPv4
   preferred: "localhost" is ::1 first on Windows and most OSC apps listen on IPv4), `config.json`
-  and saved presets in `<app data dir>/osc`, and `OscStatus` in `Snapshot.osc`. First run: one
-  Generic destination at 127.0.0.1:9000, off. `builtin_presets` has one per app with its default
+  and saved presets in `<app data dir>/osc`, and `OscStatus` in `Snapshot.osc`. OSC has a master
+  switch (`Config.enabled`, `osc_set_enabled`): off on first run (with one Generic destination at
+  127.0.0.1:9000, ready), on for configs from before it existed; each destination keeps its own
+  box, and a destination sends only while both are on (`Dest::on`). `builtin_presets` has one per app with its default
   port, checked against each app's docs or source (Oct 2026); the OSC tab's guide (`APPS` in
   `src/tabs/osc.ts`) has a step per preset by name, and the README lists them; keep the three in
   step. No haptics over OSC (the user decided).
@@ -85,8 +96,9 @@ without the user asking: a `v*` tag makes CI draft a release.
   Xbox 360 pad; plug in, wait, then nudge it off-centre and back, else XInput shows a stale
   off-centre report; rumble via notifications; `install` runs the embedded installer with UAC),
   `uinput.rs` (Linux keyboard+mouse and an xpad-style pad, no rumble yet). macOS: not available.
-  `PlayOut` holds the Desktop/Game **mode**: the K&M desktop layout or else the gamepad's on the
-  desktop, the gamepad's or else the K&M game layout in games (`active_slot`). `Switch` flips it
+  `PlayOut` holds the Desktop/Game **mode**, which only the Keyboard & mouse tab shows (the gamepad
+  is for games; with only the gamepad on, it always plays): the K&M desktop layout or else the
+  gamepad's on the desktop, the gamepad's or else the K&M game layout in games (`active_slot`). `Switch` flips it
   (once per press: the new engine would see the held button as a new press) with a haptic click;
   auto switch polls the foreground window every 500 ms and a manual switch holds until it
   changes. The pad is opened, the driver checked and installed on threads (`tick` picks them up);
@@ -99,7 +111,7 @@ without the user asking: a `v*` tag makes CI draft a release.
   (`src-tauri/vendor/windows-midi-services`, extracted to `<app data>/midi/windows-midi-services/<PREVIEW>`
   and loaded only if Windows has no copy). Bindings are generated by `tools/midi2-bindings`
   (windows-bindgen 0.100 + `fix.py`; see its README); never hand-edit `midi2_bindings.rs`.
-  `Support::System` (Windows' copy) is a normal, default output. `Support::Preview` (ours) is
+  `Support::System` (Windows' copy) is a normal output, the one the MIDI switch picks first. `Support::Preview` (ours) is
   opt-in "experimental": verified on 25H2 in Oct 2026, today's service makes ONE virtual device
   per `midisrv` run; a second `CreateVirtualDevice` hangs until the service restarts (closing
   or a new product id doesn't help). So the port is made at most once per app run and kept
@@ -118,6 +130,9 @@ without the user asking: a `v*` tag makes CI draft a release.
   (`outputs::Watched`; meters and Learn need it). Measured on Windows: tray ~1.6% of a core and
   30 MB; minimised ~3%; open: ~10% on a still tab, ~25% on the Visualizer, ~50% on Raw data.
   New outputs must follow the same rule: no per-report work while off and unwatched.
+- **Output switches**: every output tab starts with the same on/off switch, name and muted status
+  (`powerHtml` in `src/tabs/power.ts`, class `out-switch`; `.power` is the top bar's controller
+  power button). Every output starts off and remembers whether it was on (each owner's config).
 - **UI cost with the window open**: in WebView2 every frame the page shows costs CPU however
   little changed (~11% of a core for a 4 px box moving 60 times a second), and so does every DOM
   write, even of an unchanged value. So: per-snapshot writes go through `src/dom.ts`
@@ -212,6 +227,7 @@ blocks forever. Use `device::valve_api()` / `device::rescan()`, which only enume
 
 - `npm run tauri dev`: run the app
 - `npm run probe -- --raw --seconds 10`: terminal dump of devices and live decoded reports
+- `cargo run --manifest-path tools/release-check/Cargo.toml`: release checks (Windows, controller in hand)
 - `npm run tauri build`: release bundle for the current OS (macOS/Linux builds need those OSes; use CI)
 - CI (`.github/workflows/build.yml`, tauri-action): run it by hand for Windows/macOS (universal)/Linux
   bundles as run artifacts; pushing a `v*` tag also puts them in a draft GitHub release. Each OS

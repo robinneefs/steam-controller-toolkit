@@ -14,14 +14,6 @@
 > machine yet. Please [report what goes wrong](https://github.com/robinneefs/steam-controller-toolkit/issues),
 > ideally with a recording from the Recorder tab.
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=QCvgsTT6-FI">
-    <img src="https://img.youtube.com/vi/QCvgsTT6-FI/hqdefault.jpg" alt="Watch the Steam Controller Toolkit demo on YouTube" width="640" />
-  </a>
-  <br />
-  <sub>▶ <a href="https://www.youtube.com/watch?v=QCvgsTT6-FI">Watch the demo video on YouTube</a></sub>
-</p>
-
 ![Visualizer tab: 3D controller, analog gauges, motion graph and buttons](docs/screenshots/visualizer.png)
 
 ## Features
