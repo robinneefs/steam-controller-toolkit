@@ -416,9 +416,9 @@ export function hex(bytes: number[]): string {
 
 export const Buttons = {
   A: 0x00000001, B: 0x00000002, X: 0x00000004, Y: 0x00000008,
-  QAM: 0x00000010, R3: 0x00000020, View: 0x00000040, R4: 0x00000080,
+  QAM: 0x00000010, R3: 0x00000020, Menu: 0x00000040, R4: 0x00000080,
   R5: 0x00000100, R: 0x00000200, DpadDown: 0x00000400, DpadRight: 0x00000800,
-  DpadLeft: 0x00001000, DpadUp: 0x00002000, Menu: 0x00004000, L3: 0x00008000,
+  DpadLeft: 0x00001000, DpadUp: 0x00002000, View: 0x00004000, L3: 0x00008000,
   Steam: 0x00010000, L4: 0x00020000, L5: 0x00040000, L: 0x00080000,
   RightStickTouch: 0x00100000, RightPadTouch: 0x00200000, RightPadClick: 0x00400000,
   RightTriggerClick: 0x00800000, LeftStickTouch: 0x01000000, LeftPadTouch: 0x02000000,

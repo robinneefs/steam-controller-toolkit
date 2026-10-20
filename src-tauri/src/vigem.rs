@@ -17,6 +17,8 @@ use crate::devices::{PadSupport, VirtualPad};
 use crate::layout::PadState;
 
 pub const INSTALLER_NAME: &str = "ViGEmBus_1.22.0_x64_x86_arm64.exe";
+/// What a report sent too soon after plugging in fails with (ERROR_NO_MORE_ITEMS).
+const NOT_READY_YET: u32 = 259;
 static INSTALLER: &[u8] = include_bytes!("../vendor/vigembus/ViGEmBus_1.22.0_x64_x86_arm64.exe");
 
 pub fn support() -> PadSupport {
@@ -41,6 +43,16 @@ impl Pad {
         let mut target = Xbox360Wired::new(client, TargetId::XBOX360_WIRED);
         target.plugin().map_err(|e| format!("Couldn't plug in the virtual controller: {e}"))?;
         target.wait_ready().map_err(|e| format!("The virtual controller didn't get ready: {e}"))?;
+        // A new pad shows XInput a stale, off-centre report until it gets one that differs from
+        // all zeros (seen on 1.22: sticks at about -10%). So nudge it, then centre it. The first
+        // report after wait_ready often fails with 259; it takes a few tries.
+        for _ in 0..50 {
+            if target.update(&XGamepad { thumb_lx: 1, ..Default::default() }).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let _ = target.update(&XGamepad::default());
         let rumble = Arc::new(Mutex::new(None));
         // Rumble from games arrives on a thread of its own; it ends when the target is unplugged.
         if let Ok(req) = target.request_notification() {
@@ -66,7 +78,7 @@ impl VirtualPad for Pad {
         match self.target.update(&g) {
             Ok(()) => Ok(()),
             // Right after plugging in, Windows may not have finished; the next report retries.
-            Err(Error::TargetNotReady) => Ok(()),
+            Err(Error::TargetNotReady | Error::WinError(NOT_READY_YET)) => Ok(()),
             Err(e) => Err(format!("The virtual controller stopped: {e}")),
         }
     }

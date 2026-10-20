@@ -2,7 +2,7 @@
 
 A cross-platform desktop app (Windows, macOS, Linux) for tinkering with the **2026 Steam Controller**
 (codename "Triton"). Each tool lives in its own tab: Visualizer (live input), Haptics (play every haptic
-effect), MIDI (controller as a MIDI controller), OSC (controller to any OSC app), Raw data (device facts and report bytes), Recorder (record and replay reports), Settings (background/tray) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
+effect), MIDI (controller as a MIDI controller), OSC (controller to any OSC app), Keyboard & mouse and Gamepad (play games without Steam), Raw data (device facts and report bytes), Recorder (record and replay reports), Settings (background/tray) and About (credits). The look follows `mockups/redesign.html` ("Big Picture"): dark
 navy, Barlow (bundled via `@fontsource/barlow`), Steam blue `#1a9fff`, rounded tiles; the tabs are in a
 left sidebar (`mockups/sidebar.html`, Panel style).
 
@@ -13,7 +13,7 @@ documented for humans in `docs/PROTOCOL.md`; keep it in sync with `protocol.rs`.
 links the demo video (YouTube `QCvgsTT6-FI`) and shows one screenshot per tab from
 `docs/screenshots/` (taken at the default 1280 x 720 window, 1.5x); retake them when a tab's look changes
 with `tools/screenshots` (the real UI fed a real recording through a mock backend, captured by headless
-Edge/Chrome; see its README). The MIDI and OSC tabs have two shots each: `midi.png`, `midi-guide.png`, `osc.png`, `osc-guide.png`.
+Edge/Chrome; see its README). The MIDI and OSC tabs have two shots each: `midi.png`, `midi-guide.png`, `osc.png`, `osc-guide.png`; the Gamepad tab has `gamepad.png` and `gamepad-driver.png` (Windows without ViGEmBus).
 
 Versioning: semver, `package.json` is the single source (`tauri.conf.json` points at it,
 `tools/sync-version.mjs` copies it to `src-tauri/Cargo.toml` + `Cargo.lock` as npm's `version` script).
@@ -35,10 +35,10 @@ without the user asking: a `v*` tag makes CI draft a release.
   unchanged; `Snapshot.tape` says what is recording/playing. Files live in
   `<app data dir>/recordings` (not Documents: macOS would prompt for access). During playback
   the power button is hidden and Haptics acts disconnected.
-- **Outputs** (`outputs.rs`): MIDI and OSC sit behind one `Outputs` value that `forward_events`
+- **Outputs** (`outputs.rs`): MIDI, OSC and play (keyboard & mouse + gamepad) sit behind one `Outputs` value that `forward_events`
   feeds every state report (~265 Hz, not the 60 Hz UI rate) from whatever the UI shows, live or
   replay, and tells to `release_all` when switching between them, seeking, or losing the
-  controller. Later outputs (virtual gamepad, keyboard/mouse) plug in there. Inputs are read and
+  controller. Inputs are read and
   shaped by `shaping.rs` (`AXES`, `read`, `Shaping`: range, deadzone, curve, smoothing, invert,
   toggle, hold; `Learner`), which each output's mapping embeds with `#[serde(flatten)]`, so preset
   JSON keeps the shaping fields at the top level. Source names are mirrored in `SOURCES` in
@@ -70,6 +70,30 @@ without the user asking: a `v*` tag makes CI draft a release.
   port, checked against each app's docs or source (Oct 2026); the OSC tab's guide (`APPS` in
   `src/tabs/osc.ts`) has a step per preset by name, and the README lists them; keep the three in
   step. No haptics over OSC (the user decided).
+- **Keyboard & mouse and Gamepad** (one owner for both tabs, `play_out.rs`): `layout.rs` is the
+  engine, pure and unit-tested, shared by both: a `Layout` (`buttons` by control name from
+  `CONTROLS` -> `Action`: keys, mouse button, scroll, Xbox input, `Switch`; `StickMode`, `PadMode`,
+  `Gyro`) turns each report into a `Frame` (pad state, held keys, mouse/scroll deltas); `Injector`
+  diffs frames into press/release events. Key names (`KEYS`) are physical US positions
+  (`KeyboardEvent.code`), sent as scan codes, except the letters/digits of a combination with
+  Ctrl/Alt/Win (`by_char`), sent as virtual keys so Ctrl+Z is undo on AZERTY; the tabs label keys
+  by the user's layout (`navigator.keyboard.getLayoutMap`, `src/tabs/keys.ts`). `CONTROLS` and
+  `KEYS` are mirrored in `layout-editor.ts`/`keys.ts`; keep them in sync. Gyro signs verified on
+  hardware (Oct 2026): turn right = +x, front raised = aim up, lean right = steer right.
+  `devices.rs` is the platform facade (`KeyMouse`, `VirtualPad`, `pad_support`, `fullscreen_app`):
+  `inject_win.rs` (SendInput, `dwExtraInfo` 0x5343; full-screen detection), `vigem.rs` (ViGEmBus
+  Xbox 360 pad; plug in, wait, then nudge it off-centre and back, else XInput shows a stale
+  off-centre report; rumble via notifications; `install` runs the embedded installer with UAC),
+  `uinput.rs` (Linux keyboard+mouse and an xpad-style pad, no rumble yet). macOS: not available.
+  `PlayOut` holds the Desktop/Game **mode**: the K&M desktop layout or else the gamepad's on the
+  desktop, the gamepad's or else the K&M game layout in games (`active_slot`). `Switch` flips it
+  (once per press: the new engine would see the held button as a new press) with a haptic click;
+  auto switch polls the foreground window every 500 ms and a manual switch holds until it
+  changes. The pad is opened, the driver checked and installed on threads (`tick` picks them up);
+  config and presets in `<app data>/play`. Commands `play_*`; `Snapshot.play` (`PlayStatus`).
+  `src-tauri/vendor/vigembus` is ViGEmBus 1.22.0's signed installer (BSD-3, project archived
+  2023; credited in About and the README). Meant for use without Steam (its Desktop Layout
+  doubles the input); apps running as admin don't get SendInput (UIPI).
 - **Windows MIDI Services** (`midi_win.rs`): the API is a preview until Windows ships it (late
   Nov 2026). We embed Microsoft's preview `Windows.Devices.Midi2.dll` + `.pri`
   (`src-tauri/vendor/windows-midi-services`, extracted to `<app data>/midi/windows-midi-services/<PREVIEW>`

@@ -195,7 +195,7 @@ deflected.
 | 3 | `0x00000008` | Y | | 18 | `0x00040000` | L5 (lower left back) |
 | 4 | `0x00000010` | Quick Access (···) | | 19 | `0x00080000` | L bumper |
 | 5 | `0x00000020` | R3 (right stick click) | | 20 | `0x00100000` | right stick touched |
-| 6 | `0x00000040` | View | | 21 | `0x00200000` | right pad touched |
+| 6 | `0x00000040` | Menu (≡, right of the Steam button) | | 21 | `0x00200000` | right pad touched |
 | 7 | `0x00000080` | R4 (upper right back) | | 22 | `0x00400000` | right pad clicked |
 | 8 | `0x00000100` | R5 (lower right back) | | 23 | `0x00800000` | right trigger click (full pull) |
 | 9 | `0x00000200` | R bumper | | 24 | `0x01000000` | left stick touched |
@@ -203,7 +203,7 @@ deflected.
 | 11 | `0x00000800` | D-pad right | | 26 | `0x04000000` | left pad clicked |
 | 12 | `0x00001000` | D-pad left | | 27 | `0x08000000` | left trigger click (full pull) |
 | 13 | `0x00002000` | D-pad up | | 28 | `0x10000000` | right grip touched |
-| 14 | `0x00004000` | Menu | | 29 | `0x20000000` | left grip touched |
+| 14 | `0x00004000` | View (two squares, left of the Steam button) | | 29 | `0x20000000` | left grip touched |
 
 "Touched" bits come from capacitive sensors: they report a finger resting on the part without
 pressing it.

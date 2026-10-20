@@ -341,6 +341,8 @@ pub struct PlayOut {
     pad_last_try: Option<Instant>,
     pad_error: Option<String>,
     pad_neutral_sent: bool,
+    /// A Switch fired and its button is still down.
+    switch_held: bool,
     player: Option<u8>,
     player_checked: Option<Instant>,
     rumble: (u8, u8),
@@ -390,6 +392,7 @@ impl PlayOut {
             pad_last_try: None,
             pad_error: None,
             pad_neutral_sent: false,
+            switch_held: false,
             player: None,
             player_checked: None,
             rumble: (0, 0),
@@ -528,7 +531,10 @@ impl PlayOut {
         let now = self.start.elapsed();
         if self.applied.is_some() {
             let frame = self.engine.process(s, now);
-            let switch = frame.switch;
+            // The other mode's engine starts fresh and would take the still-held button for a new
+            // press, flipping back on every report: wait for the button to be let go.
+            let switch = frame.switch && !self.switch_held;
+            self.switch_held = frame.switch_held && (switch || self.switch_held);
             let events = self.injector.apply(frame).to_vec();
             if self.applied == self.preview_slot {
                 self.speed.add(self.engine.frame(), now);
@@ -796,6 +802,24 @@ mod tests {
         assert!(play.take_haptics().is_empty());
         play.set_gamepad(GamepadConfig { enabled: true, ..Default::default() });
         assert_eq!(play.status().active, Some(Slot::Pad));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn holding_the_switch_button_switches_once() {
+        let dir = temp_dir("hold");
+        let mut play = PlayOut::new(dir.clone());
+        play.set_keymouse(KeyMouseConfig { enabled: true, ..Default::default() });
+        let steam = ControllerState { buttons: sc_core::protocol::buttons::STEAM, ..Default::default() };
+        let idle = ControllerState::default();
+        for _ in 0..10 {
+            play.process(&steam, false);
+        }
+        assert_eq!(play.mode(), Mode::Game);
+        assert_eq!(play.take_haptics().len(), 1);
+        play.process(&idle, false);
+        play.process(&steam, false);
+        assert_eq!(play.mode(), Mode::Desktop);
         let _ = fs::remove_dir_all(&dir);
     }
 

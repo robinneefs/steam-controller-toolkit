@@ -18,7 +18,7 @@ const LAYOUT_NOTES: Record<string, string> = {
   "Gyro aim (stick)": "Standard, plus aiming with the right stick by moving the controller while your thumb rests on the right stick.",
   "Gyro aim (mouse)": "Like gyro aim, but it moves the mouse: more precise, for games that take mouse and controller at once.",
   "Racing (tilt to steer)": "Lean the controller like a wheel to steer; the triggers are the pedals, the grips shift.",
-  "Trackpads as D-pad and mouse": "Click the left pad for the D-pad; the right pad is a mouse with trackball glide.",
+  "Trackpads as D-pad and mouse": "Click the left pad for the D-pad; the right pad is a mouse.",
 };
 
 const OS = navigator.userAgent.includes("Windows") ? "windows" : navigator.userAgent.includes("Mac") ? "mac" : "linux";

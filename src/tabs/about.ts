@@ -23,7 +23,7 @@ export class AboutTab implements Tab {
           <img src="/logo.png" alt="" />
           <div>
             <h1>Steam Controller Toolkit</h1>
-            <p class="muted"><span data-version></span>A tinkering toolkit for the 2026 Steam Controller: live input, haptics, MIDI for your DAW, raw reports and recordings.</p>
+            <p class="muted"><span data-version></span>A tinkering toolkit for the 2026 Steam Controller: live input, haptics, MIDI and OSC, keyboard, mouse and gamepad, raw reports and recordings.</p>
             <div class="about-links">
               <a class="gbtn" href="${REPO}">Source on GitHub</a>
               <a class="gbtn" href="${REPO}/blob/main/docs/PROTOCOL.md">Protocol notes</a>
@@ -56,6 +56,10 @@ export class AboutTab implements Tab {
               <li><a href="https://github.com/Boddlnagg/midir">midir</a>: MIDI ports</li>
               <li><a href="https://github.com/microsoft/MIDI">Windows MIDI Services</a>: the Windows MIDI port
                 (Microsoft's preview API, used until Windows ships it)</li>
+              <li><a href="https://github.com/nefarius/ViGEmBus">ViGEmBus</a> by Nefarius
+                (<a href="https://github.com/nefarius/ViGEmBus/blob/master/LICENSE">BSD 3-Clause</a>, shipped unmodified),
+                <a href="https://github.com/CasualX/vigem-client">vigem-client</a> and
+                <a href="https://github.com/emberian/evdev">evdev</a>: the gamepad</li>
             </ul>
           </section>
           <section class="tile">

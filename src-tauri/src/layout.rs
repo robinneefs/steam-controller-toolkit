@@ -44,6 +44,18 @@ pub fn key_id(name: &str) -> Option<KeyId> {
     KEYS.iter().position(|k| k.eq_ignore_ascii_case(name)).map(|i| i as KeyId)
 }
 
+/// Shortcuts (Ctrl, Alt or Win with a letter or digit) go out by character, so Ctrl+Z is undo on
+/// any keyboard layout (on AZERTY, the Z position types W: Ctrl+W would close the tab). Every other
+/// key goes out by position, so WASD stays under the fingers.
+fn by_char(keys: &[KeyId]) -> bool {
+    keys.iter().any(|k| matches!(KEYS[*k as usize], "Ctrl" | "Alt" | "Win" | "RCtrl" | "RAlt"))
+}
+
+fn is_char(k: KeyId) -> bool {
+    let name = KEYS[k as usize];
+    name.len() == 1 && name.as_bytes()[0].is_ascii_alphanumeric()
+}
+
 /// Held keys, one bit per entry of [`KEYS`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KeySet([u64; 4]);
@@ -414,8 +426,12 @@ pub struct Frame {
     pub scroll: [f32; 2],
     /// Keys pressed again while held (repeat).
     pub taps: Vec<KeyId>,
+    /// Keys of shortcuts, to send by character rather than by position (see [`by_char`]).
+    pub by_char: KeySet,
     /// A Switch action was pressed.
     pub switch: bool,
+    /// A Switch action's control is held down.
+    pub switch_held: bool,
     pub gyro_active: bool,
     /// Bit per control in use ([`CONTROLS`] index, then the `LIT_*` parts), for the tabs to light up.
     pub lit: u64,
@@ -426,7 +442,7 @@ pub struct Frame {
 #[derive(Debug, Clone, PartialEq)]
 enum Act {
     None,
-    Keys { keys: Vec<KeyId>, repeat: bool },
+    Keys { keys: Vec<KeyId>, repeat: bool, by_char: bool },
     Mouse(u8),
     Scroll(Dir, bool),
     Pad(PadInput),
@@ -444,7 +460,7 @@ impl Act {
                 }
                 // Modifiers first, else as written; the last key is the one that repeats.
                 ids.sort_by_key(|k| (*k as usize) >= MODIFIERS);
-                Act::Keys { keys: ids, repeat: *repeat }
+                Act::Keys { by_char: by_char(&ids), keys: ids, repeat: *repeat }
             }
             Action::Mouse { button } => Act::Mouse(button.bit()),
             Action::Scroll { dir, repeat } => Act::Scroll(*dir, *repeat),
@@ -498,9 +514,12 @@ fn apply(a: &Act, pressed: bool, analog: f32, p: &mut Press, now: Duration, f: &
     let rising = p.step(pressed, now);
     match a {
         Act::None => {}
-        Act::Keys { keys, repeat } => {
+        Act::Keys { keys, repeat, by_char } => {
             if pressed {
                 keys.iter().for_each(|k| f.keys.insert(*k));
+                if *by_char {
+                    keys.iter().filter(|k| is_char(**k)).for_each(|k| f.by_char.insert(*k));
+                }
                 if *repeat && p.repeat(now, REPEAT_EVERY) {
                     f.taps.push(*keys.last().unwrap());
                 }
@@ -530,7 +549,10 @@ fn apply(a: &Act, pressed: bool, analog: f32, p: &mut Press, now: Duration, f: &
                 _ => {}
             }
         }
-        Act::Switch => f.switch |= rising,
+        Act::Switch => {
+            f.switch |= rising;
+            f.switch_held |= pressed;
+        }
     }
 }
 
@@ -924,7 +946,8 @@ impl Engine {
 /// One input event for the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    Key { key: KeyId, down: bool },
+    /// `by_char`: send the character the key name stands for, not the key at its position.
+    Key { key: KeyId, down: bool, by_char: bool },
     Button { button: MouseButton, down: bool },
     /// Relative pointer movement in pixels.
     Move { dx: i32, dy: i32 },
@@ -943,6 +966,8 @@ const WHEEL_STEP: i32 = 40;
 #[derive(Debug, Default)]
 pub struct Injector {
     keys: KeySet,
+    /// Held keys that went down by character: they go up the same way.
+    by_char: KeySet,
     buttons: u8,
     mouse_rest: [f32; 2],
     scroll_rest: [f32; 2],
@@ -959,8 +984,16 @@ impl Injector {
         self.events.clear();
         // Releases first (non-modifiers before modifiers), then presses (modifiers first).
         let old = self.keys;
+        let old_by_char = self.by_char;
         for k in old.iter().rev().filter(|k| !f.keys.contains(*k)) {
-            self.events.push(Event::Key { key: k, down: false });
+            self.events.push(Event::Key { key: k, down: false, by_char: old_by_char.contains(k) });
+        }
+        // A key keeps the way it went down until it's let go.
+        self.by_char = KeySet::default();
+        for k in f.keys.iter() {
+            if if old.contains(k) { old_by_char.contains(k) } else { f.by_char.contains(k) } {
+                self.by_char.insert(k);
+            }
         }
         for b in MouseButton::ALL {
             if self.buttons & b.bit() != 0 && f.mouse_buttons & b.bit() == 0 {
@@ -968,11 +1001,11 @@ impl Injector {
             }
         }
         for k in f.keys.iter().filter(|k| !old.contains(*k)) {
-            self.events.push(Event::Key { key: k, down: true });
+            self.events.push(Event::Key { key: k, down: true, by_char: self.by_char.contains(k) });
         }
         for k in &f.taps {
             if f.keys.contains(*k) && old.contains(*k) {
-                self.events.push(Event::Key { key: *k, down: true });
+                self.events.push(Event::Key { key: *k, down: true, by_char: self.by_char.contains(*k) });
             }
         }
         for b in MouseButton::ALL {
@@ -1052,7 +1085,7 @@ pub fn builtin_keymouse() -> Vec<Layout> {
         left_stick: StickMode::Scroll { speed: 18.0, deadzone: 0.15 },
         right_stick: StickMode::Mouse { speed: 1400.0, deadzone: 0.12 },
         left_pad: PadMode::Scroll { speed: 12.0 },
-        right_pad: PadMode::Mouse { speed: 1100.0, trackball: true },
+        right_pad: PadMode::Mouse { speed: 1100.0, trackball: false },
         gyro: Gyro::default(),
     };
     let presentation = Layout {
@@ -1108,7 +1141,7 @@ pub fn builtin_keymouse() -> Vec<Layout> {
         ]),
         left_stick: StickMode::Directions { dirs: Directions::keys("W", "A", "S", "D"), threshold: 0.4 },
         right_stick: StickMode::Mouse { speed: 1800.0, deadzone: 0.1 },
-        right_pad: PadMode::Mouse { speed: 1400.0, trackball: true },
+        right_pad: PadMode::Mouse { speed: 1400.0, trackball: false },
         ..Layout::default()
     };
     let shooter_gyro = Layout {
@@ -1144,7 +1177,7 @@ pub fn builtin_keymouse() -> Vec<Layout> {
         left_stick: StickMode::Directions { dirs: Directions::keys("Up", "Left", "Down", "Right"), threshold: 0.4 },
         right_stick: StickMode::Scroll { speed: 10.0, deadzone: 0.2 },
         left_pad: PadMode::Scroll { speed: 12.0 },
-        right_pad: PadMode::Mouse { speed: 1200.0, trackball: true },
+        right_pad: PadMode::Mouse { speed: 1200.0, trackball: false },
         ..Layout::default()
     };
     vec![desktop, presentation, shooter, shooter_gyro, strategy]
@@ -1199,7 +1232,7 @@ pub fn builtin_gamepad() -> Vec<Layout> {
         }),
         with("Gyro aim (mouse)", &|l| {
             l.gyro = Gyro { output: GyroOutput::Mouse, activation: Activation::RightStickTouch, ..Gyro::default() };
-            l.right_pad = PadMode::Mouse { speed: 1200.0, trackball: true };
+            l.right_pad = PadMode::Mouse { speed: 1200.0, trackball: false };
         }),
         with("Racing (tilt to steer)", &|l| {
             l.gyro = Gyro { output: GyroOutput::Steer, activation: Activation::Always, ..Gyro::default() };
@@ -1208,7 +1241,7 @@ pub fn builtin_gamepad() -> Vec<Layout> {
         }),
         with("Trackpads as D-pad and mouse", &|l| {
             l.left_pad = PadMode::Directions { dirs: Directions::dpad(), click: true };
-            l.right_pad = PadMode::Mouse { speed: 1200.0, trackball: true };
+            l.right_pad = PadMode::Mouse { speed: 1200.0, trackball: false };
             l.buttons.insert("RPadClick".into(), A::mouse(MouseButton::Left));
         }),
     ]
@@ -1234,11 +1267,37 @@ mod tests {
         let ctrl = key_id("Ctrl").unwrap();
         let c = key_id("C").unwrap();
         let down: Vec<Event> = inj.apply(e.process(&s, ms(0))).to_vec();
-        assert_eq!(down, vec![Event::Key { key: ctrl, down: true }, Event::Key { key: c, down: true }]);
+        assert_eq!(down, vec![Event::Key { key: ctrl, down: true, by_char: false }, Event::Key { key: c, down: true, by_char: true }]);
         // Held: nothing new.
         assert!(inj.apply(e.process(&s, ms(4))).is_empty());
         let up: Vec<Event> = inj.apply(e.process(&ControllerState::default(), ms(8))).to_vec();
-        assert_eq!(up, vec![Event::Key { key: c, down: false }, Event::Key { key: ctrl, down: false }]);
+        assert_eq!(up, vec![Event::Key { key: c, down: false, by_char: true }, Event::Key { key: ctrl, down: false, by_char: false }]);
+    }
+
+    #[test]
+    fn shortcuts_go_by_character_and_plain_keys_by_position() {
+        let mut e = Engine::new(layout(&[
+            ("A", Action::key(&["Ctrl", "Z"])),
+            ("B", Action::key(&["Shift", "W"])),
+            ("X", Action::key(&["D"])),
+            ("Y", Action::key(&["Win", "Tab"])),
+        ]));
+        let mut inj = Injector::default();
+        let s = ControllerState { buttons: buttons::A | buttons::B | buttons::X | buttons::Y, ..Default::default() };
+        let down: Vec<(&str, bool)> = inj
+            .apply(e.process(&s, ms(0)))
+            .iter()
+            .filter_map(|ev| match ev {
+                Event::Key { key, by_char, down: true } => Some((KEYS[*key as usize], *by_char)),
+                _ => None,
+            })
+            .collect();
+        // Z is in a Ctrl shortcut: by character. W with Shift, D alone, Tab and the modifiers: by position.
+        for (k, want) in [("Ctrl", false), ("Shift", false), ("Win", false), ("W", false), ("D", false), ("Z", true), ("Tab", false)] {
+            assert!(down.contains(&(k, want)), "{k}: {down:?}");
+        }
+        let up = inj.release().to_vec();
+        assert!(up.contains(&Event::Key { key: key_id("Z").unwrap(), down: false, by_char: true }));
     }
 
     #[test]
@@ -1422,7 +1481,7 @@ mod tests {
         inj.apply(&f);
         assert!(inj.held_anything());
         let evs = inj.release().to_vec();
-        assert_eq!(evs, vec![Event::Key { key: 3, down: false }, Event::Button { button: MouseButton::Right, down: false }]);
+        assert_eq!(evs, vec![Event::Key { key: 3, down: false, by_char: false }, Event::Button { button: MouseButton::Right, down: false }]);
         assert!(!inj.held_anything());
     }
 

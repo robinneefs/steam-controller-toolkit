@@ -5,7 +5,7 @@ Nefarius Software Solutions e.U., from https://github.com/nefarius/ViGEmBus/rele
 (BSD 3-Clause, `LICENSE.txt`). The project was archived in November 2023; this is its last release.
 
 The Windows build embeds it (`src-tauri/src/vigem.rs`). The Gamepad tab's **Install driver**
-button writes it to `<app data>/gamepad/` and runs it; Windows asks for administrator permission.
+button writes it to `<app data>/play/installer/` and runs it; Windows asks for administrator permission.
 Users remove it in Settings → Apps → Installed apps → "ViGEm Bus Driver".
 
 - SHA-256: `89220a7865076b342892f98865f3499fb7c4cfd673159e89d352c360fd014c6a`

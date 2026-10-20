@@ -3,7 +3,8 @@
 //! Keys go out as scan codes of their position on a US keyboard (the names in `layout::KEYS`
 //! are positions, as the tabs capture them with `KeyboardEvent.code`): games that read key
 //! positions get the key the user picked, and apps get the character that key types in the
-//! user's own layout. Media keys have no scan code and go out as virtual keys.
+//! user's own layout. Media keys have no scan code and go out as virtual keys, and so do the
+//! letters and digits of shortcuts (`by_char` in `layout.rs`), so Ctrl+Z is undo on any layout.
 //!
 //! Windows doesn't let a normal app send input to one running as administrator (UIPI); those
 //! windows simply don't react.
@@ -100,10 +101,17 @@ fn code(name: &str) -> Option<u32> {
     })
 }
 
-fn key_input(name: &str, down: bool) -> Option<INPUT> {
+fn key_input(name: &str, down: bool, by_char: bool) -> Option<INPUT> {
     let c = code(name)?;
     let up = if down { 0 } else { KEYEVENTF_KEYUP };
-    let ki = if c & 0x10000 != 0 {
+    // A letter or digit by character: its virtual key ('A'..'Z' and '0'..'9' are their own codes),
+    // with the scan code the user's layout has for it.
+    let ki = if by_char && name.len() == 1 && name.as_bytes()[0].is_ascii_alphanumeric() {
+        let vk = name.as_bytes()[0] as u16;
+        // SAFETY: a plain lookup in the current keyboard layout.
+        let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) } as u16;
+        KEYBDINPUT { wVk: vk, wScan: scan, dwFlags: up, time: 0, dwExtraInfo: EXTRA }
+    } else if c & 0x10000 != 0 {
         KEYBDINPUT { wVk: (c & 0xFFFF) as u16, wScan: 0, dwFlags: up, time: 0, dwExtraInfo: EXTRA }
     } else {
         let ext = if c & 0xE000 == 0xE000 { KEYEVENTF_EXTENDEDKEY } else { 0 };
@@ -124,7 +132,7 @@ impl KeyMouse for Injector {
         let mut inputs: Vec<INPUT> = Vec::with_capacity(events.len() + 1);
         for e in events {
             match *e {
-                Event::Key { key, down } => inputs.extend(key_input(KEYS[key as usize], down)),
+                Event::Key { key, down, by_char } => inputs.extend(key_input(KEYS[key as usize], down, by_char)),
                 Event::Button { button, down } => {
                     let (flags, data) = match (button, down) {
                         (MouseButton::Left, true) => (MOUSEEVENTF_LEFTDOWN, 0),

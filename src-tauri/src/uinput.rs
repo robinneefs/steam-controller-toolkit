@@ -100,7 +100,8 @@ impl crate::devices::KeyMouse for KeyMouse {
         let mut out = Vec::with_capacity(events.len() * 2);
         for e in events {
             match *e {
-                Event::Key { key, down } => {
+                // uinput sends key positions only; the desktop's layout picks the character.
+                Event::Key { key, down, .. } => {
                     if let Some(c) = key_code(KEYS[key as usize]) {
                         out.push(ev(EventType::KEY, c, down as i32));
                     }

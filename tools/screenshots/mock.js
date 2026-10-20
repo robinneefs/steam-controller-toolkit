@@ -50,7 +50,7 @@
     osc_list_presets: () => data.osc.presets,
     osc_load_preset: (args) => structuredClone(data.osc.builtin.find((p) => p.name === args.name)),
     background_settings: () => ({ close_to_tray: true, autostart: true }),
-    play_setup: () => ({ ...structuredClone(data.play.setup), mode: params.get("slot") === "game" ? "game" : "desktop" }),
+    play_setup: () => ({ ...structuredClone(data.play.setup), mode: params.get("slot") === "game" || tab === "gamepad" ? "game" : "desktop" }),
     play_list_presets: (args) => data.play.presets[args.kind],
     play_load_preset: (args) => structuredClone(data.play.builtin[args.kind].find((l) => l.name === args.name)),
   };
@@ -84,7 +84,12 @@
       };
     }
     // The Gamepad tab's live view shows the pad layout; the snapshots carry it on the side.
-    if (snap.play && tab === "gamepad") snap.play.preview = data.play.pad_previews[Math.min(index, data.play.pad_previews.length - 1)];
+    // In Game mode, so the pad is the layout in play (in Desktop the keyboard & mouse one is).
+    if (snap.play && tab === "gamepad") {
+      snap.play.preview = data.play.pad_previews[Math.min(index, data.play.pad_previews.length - 1)];
+      snap.play.mode = "game";
+      snap.play.active = "pad";
+    }
     if (snap.play && driverMissing) {
       snap.play.gamepad = { ...snap.play.gamepad, support: { kind: "missing", detail: "The ViGEmBus driver isn't installed" }, connected: false, player: null };
     }

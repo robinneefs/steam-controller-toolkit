@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Action, Activation, Directions, Layout, PadInput, PadMode, PlayStatus, Snapshot, StickMode } from "../controller";
 import { setAttr, setHtml, setText } from "../dom";
 import { addHelp, helpIcon } from "../help";
-import { KEY_LISTS, KEYS, MODIFIERS, keyFromCode, keyLabel } from "./keys";
+import { KEY_LISTS, KEYS, MODIFIERS, byChar, keyFromCode, keyLabel, keysLabel, shortcutKey } from "./keys";
 import { BUTTONS } from "./sources";
 
 /** Every control a layout binds; mirrors `CONTROLS` in src-tauri/src/layout.rs (its index is its lit bit). */
@@ -39,7 +39,7 @@ export function actionLabel(a: Action | undefined): string {
   switch (a?.kind ?? "none") {
     case "key": {
       const k = a as Extract<Action, { kind: "key" }>;
-      return k.keys.map(keyLabel).join(" + ") + (k.repeat ? " ⟳" : "");
+      return keysLabel(k.keys) + (k.repeat ? " ⟳" : "");
     }
     case "mouse":
       return MOUSE_LABELS[(a as Extract<Action, { kind: "mouse" }>).button];
@@ -212,7 +212,7 @@ class BindPicker {
     }
     this.held.add(key);
     if (!this.combo.includes(key)) this.combo.push(key);
-    this.captureText(this.ordered().map(keyLabel).join(" + "));
+    this.captureText(keysLabel(this.ordered()));
   }
 
   private keyup(e: KeyboardEvent): void {
@@ -238,7 +238,9 @@ class BindPicker {
   /** Modifiers first, as the backend presses them. */
   private ordered(): string[] {
     const order = (k: string) => (MODIFIERS.has(k as (typeof KEYS)[number]) ? KEYS.indexOf(k as (typeof KEYS)[number]) : 100);
-    return [...this.combo].sort((a, b) => order(a) - order(b));
+    const keys = [...this.combo].sort((a, b) => order(a) - order(b));
+    // A shortcut's letters are characters: the letter the pressed key types on this layout.
+    return byChar(keys) ? keys.map((k) => (MODIFIERS.has(k as (typeof KEYS)[number]) ? k : shortcutKey(k))) : keys;
   }
 }
 
@@ -320,6 +322,8 @@ export class LayoutEditor {
 
   constructor(private root: HTMLElement, private opts: EditorOptions) {
     root.classList.add("layout-editor");
+    // Labels follow the keyboard layout, read once it's known and again when it changes.
+    window.addEventListener("keylayout", () => this.layout && this.render());
     root.addEventListener("click", (e) => this.clicked(e.target as Element));
     root.addEventListener("change", (e) => this.changed(e.target as HTMLElement, true));
     root.addEventListener("input", (e) => {
@@ -552,7 +556,7 @@ export class LayoutEditor {
       }
     }
     switch (kind) {
-      case "mouse": return { kind, speed: 1100, trackball: true };
+      case "mouse": return { kind, speed: 1100, trackball: false };
       case "scroll": return { kind, speed: 12 };
       case "stick": return { kind, target: side };
       case "directions": return { kind, click: true, ...dirs };
@@ -645,7 +649,7 @@ export function renderNotes(root: HTMLElement, snap: Snapshot): void {
 /** Held keys and mouse buttons as chips. */
 export function chipsHtml(keys: string[], mouseButtons: number): string {
   const buttons = (["left", "right", "middle", "back", "forward"] as const).filter((_, i) => mouseButtons & (1 << i)).map((b) => MOUSE_LABELS[b]);
-  const chips = [...keys.map(keyLabel), ...buttons].map((t) => `<span class="key-chip">${escape(t)}</span>`).join("");
+  const chips = [...keys.map((k) => keyLabel(k, byChar(keys))), ...buttons].map((t) => `<span class="key-chip">${escape(t)}</span>`).join("");
   return chips || `<span class="muted">Nothing held</span>`;
 }
 

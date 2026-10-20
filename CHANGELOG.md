@@ -28,6 +28,29 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
   under 2% of one CPU core (the window took about 500 MB).
 - **Settings** tab: keep running in the tray when the window closes (on by default), and start
   in the tray when you sign in.
+- **Keyboard & mouse tab**: use the controller as a keyboard and mouse, with nothing to install
+  (Windows and Linux).
+  - Two layouts: one for the desktop (pointer on the right pad and stick, scrolling, clicks, and
+    shortcuts such as Win+Tab and Ctrl+C/V on the grips) and one for games (WASD + mouse by default).
+  - Built-in layouts: Desktop, Presentation, Shooter, Shooter + gyro aim and Strategy; save your own.
+  - Bind any control to a key or combination (press it to capture it), a media key, a mouse
+    button or scrolling. Sticks and trackpads can be the pointer, scrolling or four keys.
+  - Shortcuts work on any keyboard layout: Ctrl+Z is undo on AZERTY too, while single keys such
+    as WASD keep their place under your fingers. Key names follow your layout.
+- **Gamepad tab**: games see the controller as an Xbox 360 controller, rumble included.
+  - On Windows this needs the ViGEmBus driver. The tab explains why and installs it with one
+    click (Windows asks for administrator permission once).
+  - On Linux it uses uinput.
+  - Built-in layouts: Standard, back grips as face buttons, gyro aim (as the right stick or the
+    mouse), racing (tilt to steer), and trackpads as D-pad and mouse.
+  - Gyro is optional: always, or while a thumb rests on the right stick, a trigger is pulled, or a
+    button is held or toggled. Drift is calibrated whenever the controller is still.
+- **Desktop and Game modes** for both tabs: the Steam button switches between them, with a click
+  you can feel, and full-screen apps switch to Game on their own. With both outputs on, the
+  controller is a mouse on the desktop and a gamepad in games. Both keep working from the tray,
+  and its menu shows their status.
+- **Linux**: the .deb and .rpm install a udev rule, so the app can reach the controller and
+  `/dev/uinput` without Steam's rules.
 
 ### Changed
 
@@ -46,6 +69,12 @@ version (0.2.0) and fixes bump the patch version (0.2.1). See
 - Starting the app again while it runs (say from the Start menu while it sits in the tray) opens
   its window instead of a second copy.
 - Quitting lets go of held MIDI notes and OSC buttons.
+
+### Fixed
+
+- The View and Menu buttons were swapped everywhere: the Visualizer lit the wrong one, and MIDI
+  and OSC mappings of one fired on the other. View is the button with two squares on the left,
+  Menu the one with three lines on the right. Mappings made with the wrong name need swapping.
 
 ## [0.2.1] - 2026-10-19
 

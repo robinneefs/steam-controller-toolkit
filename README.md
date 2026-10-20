@@ -124,6 +124,65 @@ desks, VJ software, DAWs. Several apps can get it at once, on this computer or o
 
 ![OSC Setup guide: picking your app, pointing a destination at it, checking it arrives](docs/screenshots/osc-guide.png)
 
+### Keyboard & mouse
+
+Use the controller as a keyboard and mouse, on the desktop and in games, with nothing to install
+(Windows and Linux; not on macOS yet).
+
+- **Two layouts**, one for each mode: a **Desktop** layout (by default: right pad and right stick
+  move the pointer, the triggers click, the left stick and pad scroll, the grips undo, redo, copy
+  and paste, View is Win+Tab) and a **Game** layout (by default: WASD on the left stick, mouse
+  aiming on the right stick or pad).
+- **Built-in layouts**: Desktop, Presentation (flip slides, point with the gyro while RT is held),
+  Shooter (WASD + mouse), Shooter + gyro aim and Strategy / point & click. Edit them and save
+  your own (JSON files, like MIDI's).
+- **Bind any control** to a key or a combination (click, then press it), a media or system key,
+  a mouse button, scrolling, or the Desktop ⇄ Game switch. Keys can repeat while held. Sticks
+  and trackpads can be the pointer (the trackpad with optional trackball glide), scrolling, or
+  four keys (WASD, arrows); trackpads can also split into four zones, optionally only while clicked.
+- **Gyro** can move the pointer: always, or while your thumb rests on the right stick, a trigger
+  is pulled, or a button is held or toggled.
+- **Any keyboard layout**: single keys are sent by position, so WASD stays under your fingers on
+  AZERTY or QWERTZ, and shortcuts by letter, so Ctrl+Z is undo everywhere. Key names follow your
+  layout.
+- A live view shows the keys and buttons held and the pointer's speed, and the rows in use light up.
+
+![Keyboard & mouse tab: the Game layout's bindings, with the keys held and the pointer's speed live](docs/screenshots/keymouse.png)
+
+### Gamepad
+
+Play games that don't know the Steam Controller: they see an **Xbox 360 controller**, and their
+rumble reaches the controller.
+
+- **Built-in layouts**: Standard (every button where an Xbox controller has it), back grips as
+  face buttons, gyro aim (as the right stick, or as the mouse for games that take both), racing
+  (lean the controller to steer) and trackpads as D-pad and mouse. Grips, trackpads and gyro can
+  also send keys or the mouse.
+- **Gyro is optional**, never required: always on, or only while your thumb rests on the right
+  stick, a trigger is pulled, or a button is held or toggled. Drift is calibrated whenever the
+  controller lies still.
+- A live drawing shows what games see, with the player number and rumble.
+- **Windows** has no way for an app to add a game controller without a driver (Windows' own
+  injection API is ignored by games; we tested it). The tab explains this and installs the
+  open-source [ViGEmBus](https://github.com/nefarius/ViGEmBus) driver (BSD-3, signed, also used
+  by DS4Windows and Parsec) with one click; Windows asks for administrator permission once. It
+  stays installed for the whole PC until you remove *ViGEm Bus Driver* in Settings → Apps. Note
+  that ViGEmBus was retired in 2023 (no more updates) and some anti-cheat systems block virtual
+  controllers.
+- **Linux** uses uinput (see [Requirements](#requirements)); **macOS** isn't supported.
+
+![Gamepad tab: the Standard layout and the live drawing of what games see](docs/screenshots/gamepad.png)
+
+![Gamepad tab on Windows without the driver: why it's needed, what comes with it, and the Install button](docs/screenshots/gamepad-driver.png)
+
+**Desktop and Game modes**, shared by both tabs: the **Steam button** switches between them (you
+feel a click), and with *Full-screen apps use Game* on, a full-screen app switches to Game and
+leaving it switches back; a switch by hand holds until another app goes full screen. With both
+outputs on, the controller is a mouse on the desktop and a gamepad in games. Both work from the
+tray. Meant for use **without Steam**: with Steam running, its Desktop Layout sends mouse input
+too, so input arrives twice. Apps running as administrator don't receive the keyboard & mouse
+input unless the Toolkit runs as administrator too.
+
 ### Raw data
 
 ![Raw data tab: connection details, colour-coded byte map, decoded inputs and motion](docs/screenshots/raw-data.png)
@@ -160,8 +219,9 @@ Record a session and play it back without a controller:
 - **Power button**: turns the controller off (click twice to confirm).
 - **Click any value to copy it**, or *Copy all* for a whole report as hex.
 - A warning appears while Steam is running (see [Requirements](#requirements)).
-- **Runs in the background**: close the window and the app stays in the system tray, so MIDI
-  and OSC keep sending while using about 30 MB of memory and under 2% of a CPU core. Click the
+- **Runs in the background**: close the window and the app stays in the system tray, so MIDI,
+  OSC, keyboard & mouse and the gamepad keep working while using about 30 MB of memory and
+  under 2% of a CPU core. Click the
   tray icon to open the window again, right-click it to quit. The **Settings** tab turns this
   off, and can start the app in the tray when you sign in.
 - **About** tab with version, links and credits.
@@ -170,7 +230,7 @@ Record a session and play it back without a controller:
 
 ![About tab: version, links, credits and licenses](docs/screenshots/about.png)
 
-More tools (stick tester, gyro mouse, other outputs next to MIDI and OSC) are planned. See
+More tools (a stick tester, a 2D view) are planned. See
 [docs/PROTOCOL.md](docs/PROTOCOL.md) for how the communication with the controller works.
 
 ## Requirements
@@ -187,6 +247,7 @@ More tools (stick tester, gyro mouse, other outputs next to MIDI and OSC) are pl
   ([`src-tauri/linux/60-steam-controller-toolkit.rules`](src-tauri/linux/60-steam-controller-toolkit.rules));
   Steam's own rules cover them too. With the AppImage and without Steam, copy that file to
   `/etc/udev/rules.d/` and run `sudo udevadm control --reload && sudo udevadm trigger`.
+- **Gamepad on Windows**: the ViGEmBus driver, which the Gamepad tab installs for you.
 - **MIDI on Windows**: the app's own port needs Windows 11 25H2+ and is experimental until
   Microsoft's November update; a loopback port works everywhere (see [MIDI](#midi)).
 
@@ -271,8 +332,8 @@ npm run probe -- --raw --seconds 10
 | Path | What it is |
 |---|---|
 | `crates/sc-core` | Rust device layer: HID discovery, configuration, report parsing, hot-plug reader threads |
-| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI and OSC, tray icon |
-| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, OSC, Raw data, Recorder, Settings and About tabs |
+| `src-tauri` | Tauri backend: runs the device layer, streams snapshots to the UI, records and replays reports, sends MIDI, OSC, keyboard & mouse and gamepad, tray icon |
+| `src` | TypeScript frontend: tab shell and the Visualizer, Haptics, MIDI, OSC, Keyboard & mouse, Gamepad, Raw data, Recorder, Settings and About tabs |
 | `tools/convert-model.mjs` | Builds the compact 3D model from the original Sketchfab file |
 | `tools/split-dpad.py` | Headless Blender script that cuts the D-pad into four arms (run by `convert-model.mjs`) |
 | `public/models` | The 3D controller model, its license and credit |
@@ -282,6 +343,8 @@ npm run probe -- --raw --seconds 10
 | `CHANGELOG.md` | What changed in each version |
 | `tools/midi2-bindings` | Generates the Rust bindings for Windows MIDI Services (`src-tauri/src/midi2_bindings.rs`) |
 | `src-tauri/vendor/windows-midi-services` | Microsoft's preview Windows MIDI Services API files, used only where Windows has none |
+| `src-tauri/vendor/vigembus` | The ViGEmBus 1.22.0 driver installer the Gamepad tab runs on Windows |
+| `src-tauri/linux` | The udev rule (controller and uinput access) the Linux packages install |
 | `docs/PROTOCOL.md` | How the app and the controller communicate |
 | `docs/screenshots` | The screenshots in this README |
 | `mockups/redesign.html` | Design reference for the app's look |
@@ -301,6 +364,17 @@ npm run probe -- --raw --seconds 10
   Microsoft's [Windows MIDI Services](https://github.com/microsoft/MIDI) preview API
   (`Windows.Devices.Midi2`, MIT), shipped with the app under Microsoft's preview "go-live" terms.
 - OSC via [rosc](https://github.com/klingtnet/rosc).
+- The virtual gamepad on Windows via the [ViGEmBus](https://github.com/nefarius/ViGEmBus) driver
+  by Nefarius Software Solutions (BSD-3; its unmodified installer ships with the app) and
+  [vigem-client](https://github.com/CasualX/vigem-client); on Linux via
+  [evdev](https://github.com/emberian/evdev) (uinput).
+
+## Built with AI
+
+This app is built with a lot of help from AI: most of the code, the documentation and the
+protocol research were written with [Claude Code](https://claude.com/claude-code) (Anthropic's
+Claude), steered, tested on real hardware and reviewed by me. Bugs and decisions are mine; if
+something looks wrong, please [open an issue](https://github.com/robinneefs/steam-controller-toolkit/issues).
 
 ## License
 

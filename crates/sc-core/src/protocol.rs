@@ -135,7 +135,7 @@ pub mod buttons {
     pub const Y: u32 = 0x0000_0008;
     pub const QAM: u32 = 0x0000_0010;
     pub const R3: u32 = 0x0000_0020;
-    pub const VIEW: u32 = 0x0000_0040;
+    pub const MENU: u32 = 0x0000_0040;
     pub const R4: u32 = 0x0000_0080;
     pub const R5: u32 = 0x0000_0100;
     pub const R: u32 = 0x0000_0200;
@@ -143,7 +143,7 @@ pub mod buttons {
     pub const DPAD_RIGHT: u32 = 0x0000_0800;
     pub const DPAD_LEFT: u32 = 0x0000_1000;
     pub const DPAD_UP: u32 = 0x0000_2000;
-    pub const MENU: u32 = 0x0000_4000;
+    pub const VIEW: u32 = 0x0000_4000;
     pub const L3: u32 = 0x0000_8000;
     pub const STEAM: u32 = 0x0001_0000;
     pub const L4: u32 = 0x0002_0000;
@@ -162,9 +162,9 @@ pub mod buttons {
 
     /// Display names, in bit order, for debugging and UIs.
     pub const NAMES: &[(u32, &str)] = &[
-        (A, "A"), (B, "B"), (X, "X"), (Y, "Y"), (QAM, "QAM"), (R3, "R3"), (VIEW, "View"),
+        (A, "A"), (B, "B"), (X, "X"), (Y, "Y"), (QAM, "QAM"), (R3, "R3"), (MENU, "Menu"),
         (R4, "R4"), (R5, "R5"), (R, "R"), (DPAD_DOWN, "Down"), (DPAD_RIGHT, "Right"),
-        (DPAD_LEFT, "Left"), (DPAD_UP, "Up"), (MENU, "Menu"), (L3, "L3"), (STEAM, "Steam"),
+        (DPAD_LEFT, "Left"), (DPAD_UP, "Up"), (VIEW, "View"), (L3, "L3"), (STEAM, "Steam"),
         (L4, "L4"), (L5, "L5"), (L, "L"), (RIGHT_STICK_TOUCH, "RStickTouch"),
         (RIGHT_PAD_TOUCH, "RPadTouch"), (RIGHT_PAD_CLICK, "RPadClick"),
         (RIGHT_TRIGGER_CLICK, "RTrigClick"), (LEFT_STICK_TOUCH, "LStickTouch"),
