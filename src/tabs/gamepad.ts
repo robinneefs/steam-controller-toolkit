@@ -13,7 +13,7 @@ addHelp({
 
 /** What the built-in layouts are for, by name (`builtin_gamepad` in src-tauri/src/layout.rs). */
 const LAYOUT_NOTES: Record<string, string> = {
-  Standard: "Every button where an Xbox controller has it; the Steam button switches Desktop ⇄ Game. Grips and trackpads do nothing.",
+  Standard: "Every button where an Xbox controller has it; grips and trackpads do nothing. With Keys & mouse on too, the Steam button switches between them.",
   "Back grips as face buttons": "Standard, with the grips as A, B, X and Y so your thumbs stay on the sticks.",
   "Gyro aim (stick)": "Standard, plus aiming with the right stick by moving the controller while your thumb rests on the right stick.",
   "Gyro aim (mouse)": "Like gyro aim, but it moves the mouse: more precise, for games that take mouse and controller at once.",
@@ -70,23 +70,30 @@ const LINUX_DRIVER = `
 const UNSUPPORTED = `<h3>Not available on this system</h3>
   <p>The gamepad output works on Windows and Linux. On macOS, apps can't add a game controller without a system extension.</p>`;
 
-/** An Xbox 360 controller, drawn from its state. */
-const PAD_SVG = `<svg class="xpad" viewBox="0 0 320 210" aria-hidden="true">
-  <rect class="trig-track" x="42" y="6" width="70" height="9" rx="4"/><rect class="trig" data-lt x="42" y="6" width="0" height="9" rx="4"/>
-  <rect class="trig-track" x="208" y="6" width="70" height="9" rx="4"/><rect class="trig" data-rt x="208" y="6" width="0" height="9" rx="4"/>
-  <rect class="xb" data-b="256" x="44" y="22" width="66" height="13" rx="6"/><rect class="xb" data-b="512" x="210" y="22" width="66" height="13" rx="6"/>
-  <path class="xbody" d="M78 40h164c36 0 64 46 68 104 3 44-28 66-52 40l-30-32H92l-30 32C38 210 7 188 10 144 14 86 42 40 78 40z"/>
-  <circle class="well" cx="92" cy="92" r="24"/><circle class="xstick" data-ls data-b="64" cx="92" cy="92" r="14"/>
-  <circle class="well" cx="206" cy="140" r="24"/><circle class="xstick" data-rs data-b="128" cx="206" cy="140" r="14"/>
-  <g class="dpad"><rect class="xb" data-b="1" x="112" y="114" width="16" height="17" rx="3"/><rect class="xb" data-b="2" x="112" y="149" width="16" height="17" rx="3"/>
-    <rect class="xb" data-b="4" x="94" y="132" width="17" height="16" rx="3"/><rect class="xb" data-b="8" x="129" y="132" width="17" height="16" rx="3"/></g>
-  <circle class="xb" data-b="32" cx="138" cy="92" r="7"/><circle class="xb" data-b="16" cx="182" cy="92" r="7"/>
-  <circle class="xb guide" data-b="1024" cx="160" cy="66" r="12"/>
-  <g class="face"><circle class="xb a" data-b="4096" cx="236" cy="112" r="11"/><text x="236" y="116">A</text>
-    <circle class="xb b" data-b="8192" cx="258" cy="90" r="11"/><text x="258" y="94">B</text>
-    <circle class="xb x" data-b="16384" cx="214" cy="90" r="11"/><text x="214" y="94">X</text>
-    <circle class="xb y" data-b="32768" cx="236" cy="68" r="11"/><text x="236" y="72">Y</text></g>
+/** An Xbox 360 controller, drawn from its state: the bumpers wrap the shoulders, the triggers fill
+ * from the bottom as they're pulled (TRIGGER_TOP..TRIGGER_BOTTOM). */
+const PAD_SVG = `<svg class="xpad" viewBox="0 0 320 228" aria-hidden="true">
+  <defs><clipPath id="xpad-lt"><path d="M108,32 C106,20 92,11 72,12 C42,13 22,36 14,60 C22,48 32,40 45,34 C64,27 90,27 108,32 Z"/></clipPath><clipPath id="xpad-rt"><path d="M212,32 C214,20 228,11 248,12 C278,13 298,36 306,60 C298,48 288,40 275,34 C256,27 230,27 212,32 Z"/></clipPath></defs>
+  <path class="xtrig" d="M108,32 C106,20 92,11 72,12 C42,13 22,36 14,60 C22,48 32,40 45,34 C64,27 90,27 108,32 Z"/><rect class="trig" data-lt clip-path="url(#xpad-lt)" x="10" y="61" width="100" height="0"/>
+  <path class="xtrig" d="M212,32 C214,20 228,11 248,12 C278,13 298,36 306,60 C298,48 288,40 275,34 C256,27 230,27 212,32 Z"/><rect class="trig" data-rt clip-path="url(#xpad-rt)" x="210" y="61" width="100" height="0"/>
+  <path class="xbody" d="M160,50 C126,50 96,44 72,47 C42,51 22,70 15,96 C8,122 0,160 3,186 C6,212 28,226 48,218 C66,211 78,190 92,174 C104,162 118,158 136,158 L184,157 C202,158 216,162 228,174 C242,190 254,211 272,218 C292,226 314,212 317,186 C320,160 312,122 305,96 C298,70 278,51 248,47 C224,44 194,50 160,50 Z"/>
+  <path class="xb bumper" data-b="256" d="M112,36 C92,31 66,31 47,38 C30,45 16,59 8,80 C6,87 14,91 17,85 C24,67 36,55 52,49 C70,43 91,43 110,46 C118,47 119,37 112,36 Z"/><path class="xb bumper" data-b="512" d="M208,36 C228,31 254,31 273,38 C290,45 304,59 312,80 C314,87 306,91 303,85 C296,67 284,55 268,49 C250,43 229,43 210,46 C202,47 201,37 208,36 Z"/>
+  <circle class="well" cx="70" cy="94" r="23"/><circle class="xstick" data-ls data-b="64" cx="70" cy="94" r="15"/>
+  <circle class="well" cx="200" cy="132" r="23"/><circle class="xstick" data-rs data-b="128" cx="200" cy="132" r="15"/>
+  <circle class="well" cx="120" cy="132" r="22"/>
+  <g class="dpad"><path class="xb" data-b="1" d="M114,114 h12 v12 l-6,6 l-6,-6 Z"/><path class="xb" data-b="2" d="M114,150 h12 v-12 l-6,-6 l-6,6 Z"/>
+    <path class="xb" data-b="4" d="M102,126 v12 h12 l6,-6 l-6,-6 Z"/><path class="xb" data-b="8" d="M138,126 v12 h-12 l-6,-6 l6,-6 Z"/></g>
+  <circle class="xb small" data-b="32" cx="126" cy="98" r="6.5"/><circle class="xb small" data-b="16" cx="194" cy="98" r="6.5"/>
+  <circle class="guide-ring" cx="160" cy="78" r="17"/><circle class="xb guide" data-b="1024" cx="160" cy="78" r="12"/>
+  <g class="face"><circle class="xb a" data-b="4096" cx="252" cy="114" r="11"/><text x="252" y="118">A</text>
+    <circle class="xb b" data-b="8192" cx="275" cy="92" r="11"/><text x="275" y="96">B</text>
+    <circle class="xb x" data-b="16384" cx="229" cy="92" r="11"/><text x="229" y="96">X</text>
+    <circle class="xb y" data-b="32768" cx="252" cy="70" r="11"/><text x="252" y="74">Y</text></g>
 </svg>`;
+const LS = [70, 94];
+const RS = [200, 132];
+const TRIGGER_TOP = 11;
+const TRIGGER_BOTTOM = 61;
 
 /** A virtual Xbox controller for games without Steam. Needs ViGEmBus on Windows, uinput on Linux. */
 export class GamepadTab implements Tab {
@@ -261,12 +268,15 @@ export class GamepadTab implements Tab {
     });
     const [lx, ly] = stick(s.lx, s.ly);
     const [rx, ry] = stick(s.rx, s.ry);
-    setAttr(this.q("[data-ls]"), "cx", String(92 + lx));
-    setAttr(this.q("[data-ls]"), "cy", String(92 + ly));
-    setAttr(this.q("[data-rs]"), "cx", String(206 + rx));
-    setAttr(this.q("[data-rs]"), "cy", String(140 + ry));
-    setAttr(this.q("[data-lt]"), "width", String(Math.round((s.lt / 255) * 70)));
-    setAttr(this.q("[data-rt]"), "width", String(Math.round((s.rt / 255) * 70)));
+    setAttr(this.q("[data-ls]"), "cx", String(LS[0] + lx));
+    setAttr(this.q("[data-ls]"), "cy", String(LS[1] + ly));
+    setAttr(this.q("[data-rs]"), "cx", String(RS[0] + rx));
+    setAttr(this.q("[data-rs]"), "cy", String(RS[1] + ry));
+    for (const [attr, v] of [["[data-lt]", s.lt], ["[data-rt]", s.rt]] as const) {
+      const h = Math.round((v / 255) * (TRIGGER_BOTTOM - TRIGGER_TOP));
+      setAttr(this.q(attr), "y", String(TRIGGER_BOTTOM - h));
+      setAttr(this.q(attr), "height", String(h));
+    }
   }
 
   hide(): void {

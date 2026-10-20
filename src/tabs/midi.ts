@@ -378,7 +378,7 @@ export class MidiTab implements Tab {
       const pick = this.pick ?? this.defaultPick();
       if (on && !pick) {
         (e.target as HTMLInputElement).checked = false;
-        this.flash("No MIDI port to send to: create a loopback port (see the Setup guide), then press ↻.");
+        this.flash("Pick an output first; the Setup guide shows how to get one.");
         return;
       }
       this.setOutput(on ? pick! : { kind: "off" });
@@ -453,7 +453,7 @@ export class MidiTab implements Tab {
   update(snap: Snapshot): void {
     const m = snap.midi;
     if (!m || !this.preset) return;
-    // The backend can change the output itself (first run on a PC without our own port).
+    // Keep in step with the backend's output.
     if (encodeOutput(m.output) !== encodeOutput(this.output)) {
       this.output = m.output;
       if (m.output.kind !== "off") this.pick = rememberPick(m.output);
@@ -573,11 +573,12 @@ export class MidiTab implements Tab {
     this.renderOutput();
   }
 
-  /** The output the switch turns on when nothing was picked yet: our own port, else the first one. */
+  /** The output the switch turns on when nothing was picked yet: our own port, else the first one.
+   * Never the experimental Windows port: that one only when picked by hand. */
   private defaultPick(): MidiOutputChoice | null {
     if (this.virtual.available && !this.virtual.experimental) return { kind: "virtual" };
     const port = this.ports.find((p) => !/wavetable|microsoft gs/i.test(p));
-    return port ? { kind: "port", name: port } : this.virtual.available ? { kind: "virtual" } : null;
+    return port ? { kind: "port", name: port } : null;
   }
 
   private renderOutput(): void {

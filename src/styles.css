@@ -982,16 +982,18 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .play-notes .callout { margin: 0; font-size: 12.5px; line-height: 1.4; }
 .play-notes .callout[hidden] { display: none; }
 
-.xpad { display: block; width: 100%; max-width: 260px; margin: 0 auto 8px; }
-.xbody { fill: #ffffff0c; stroke: #ffffff26; stroke-width: 1.5; }
-.xpad .well { fill: #00000040; stroke: #ffffff1a; }
-.xpad .xb, .xpad .xstick { fill: #ffffff18; stroke: #ffffff26; transition: fill 0.06s; }
-.xpad .xb.on, .xpad .xstick.on { fill: var(--accent); stroke: #1a9fff; }
+.xpad { display: block; width: 100%; max-width: 270px; margin: 0 auto 8px; }
+.xbody { fill: #ffffff0f; stroke: #ffffff2e; stroke-width: 1.5; }
+.xpad .well { fill: #00000045; stroke: #ffffff14; }
+.xpad .xb, .xpad .xstick { fill: #ffffff1c; stroke: #ffffff30; transition: fill 0.06s; }
+.xpad .xb.on, .xpad .xstick.on { fill: var(--accent); stroke: var(--accent); }
 .xpad .face .a.on { fill: #3fbf6a; } .xpad .face .b.on { fill: #e0524f; }
 .xpad .face .x.on { fill: #3f7fe0; } .xpad .face .y.on { fill: #e0b23f; }
+.xpad .guide-ring { fill: none; stroke: #ffffff1c; stroke-width: 2; }
 .xpad .guide { stroke-width: 2; }
 .xpad text { fill: var(--muted); font: 700 11px "Barlow", sans-serif; text-anchor: middle; pointer-events: none; }
-.xpad .trig-track { fill: #ffffff10; }
+.xpad .face .on + text { fill: #fff; }
+.xpad .xtrig { fill: #ffffff10; stroke: #ffffff26; stroke-width: 1.2; }
 .xpad .trig { fill: var(--accent); }
 .rumble { display: flex; gap: 6px; align-items: center; margin: 0; }
 .rumble i { flex: 1; height: 6px; border-radius: 3px; background: #ffffff12; overflow: hidden; }

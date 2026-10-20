@@ -575,21 +575,22 @@ export function playBarHtml(kind: PlayKind): string {
   return `<section class="tile play-bar">
     ${powerHtml(kind === "keymouse" ? "Keyboard &amp; mouse" : "Gamepad", "Turn this output on or off")}
     <span class="midi-conn play-conn"><i data-dot></i><b data-status></b></span>
-    <span class="bar-group"><span class="muted">Mode</span>
+    ${kind === "keymouse" ? `<span class="bar-group"><span class="muted">Mode</span>
       <span class="segmented" data-modes><button data-mode="desktop" title="Use the Desktop layout">Desktop</button><button data-mode="game" title="Use the Game layout">Game</button></span>
       ${helpIcon("play-mode")}</span>
-    <label class="chk muted" title="A full-screen app switches to Game, anything else back to Desktop"><input type="checkbox" data-auto /><span class="long">Full-screen apps use Game</span><span class="short">Auto</span></label>
+    <label class="chk muted" title="A full-screen app switches to Game, anything else back to Desktop"><input type="checkbox" data-auto /><span class="long">Full-screen apps use Game</span><span class="short">Auto</span></label>` : ""}
   </section>`;
 }
 
-/** Wires the bar's mode and auto switch (on/off is the tab's, it sends its whole config). */
+/** Wires the bar's mode and auto switch, which only Keyboard & mouse has: the gamepad is for games
+ * (on/off is the tab's, it sends its whole config). */
 export function wirePlayBar(root: HTMLElement, onToggle: (on: boolean) => void): void {
   root.querySelector<HTMLInputElement>("[data-on]")!.addEventListener("change", (e) => onToggle((e.target as HTMLInputElement).checked));
-  root.querySelector("[data-modes]")!.addEventListener("click", (e) => {
+  root.querySelector("[data-modes]")?.addEventListener("click", (e) => {
     const b = (e.target as Element).closest<HTMLElement>("[data-mode]");
     if (b) invoke("play_set_mode", { mode: b.dataset.mode }).catch(() => {});
   });
-  root.querySelector<HTMLInputElement>("[data-auto]")!.addEventListener("change", (e) =>
+  root.querySelector<HTMLInputElement>("[data-auto]")?.addEventListener("change", (e) =>
     invoke("play_set_auto_switch", { on: (e.target as HTMLInputElement).checked }).catch(() => {}),
   );
 }
@@ -612,7 +613,7 @@ export function playStatusText(p: PlayStatus, kind: PlayKind): [string, string] 
   if (g.support.kind === "missing") return ["warn", g.support.detail];
   if (g.connected) {
     const who = g.player ? ` · player ${g.player}` : "";
-    return p.active === "pad" ? ["ok", `Connected${who}`] : ["ok", `Connected${who} · centred in Desktop mode`];
+    return p.active === "pad" ? ["ok", `Connected${who}`] : ["ok", `Connected${who} · Keys & mouse has the desktop`];
   }
   if (g.error) return ["warn", g.error];
   return ["", "Plugging in the virtual controller…"];
@@ -628,8 +629,8 @@ export function renderPlayBar(root: HTMLElement, snap: Snapshot, kind: PlayKind)
   setAttr(root.querySelector("[data-dot]")!, "class", cls);
   setText(root.querySelector("[data-status]")!, text);
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === p.mode));
-  const auto = root.querySelector<HTMLInputElement>("[data-auto]")!;
-  if (auto.checked !== p.auto_switch) auto.checked = p.auto_switch;
+  const auto = root.querySelector<HTMLInputElement>("[data-auto]");
+  if (auto && auto.checked !== p.auto_switch) auto.checked = p.auto_switch;
 }
 
 /** Notes both tabs show beside the live view. */
