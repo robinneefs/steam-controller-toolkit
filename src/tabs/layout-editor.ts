@@ -728,6 +728,17 @@ export function renderChips(el: HTMLElement, keys: string[], mouseButtons: numbe
 
 // ---------- Presets ----------
 
+/** What a layout's Open actions open: anything a shared layout would run on a button press. */
+export function runTargets(l: Layout): string[] {
+  const actions: Action[] = [...Object.values(l.buttons)];
+  for (const m of [l.left_stick, l.right_stick, l.left_pad, l.right_pad]) {
+    if (m.kind === "directions") actions.push(...DIRS.map((d) => m[d]));
+    if (m.kind === "radial") actions.push(...m.items);
+  }
+  const targets = actions.flatMap((a) => (a?.kind === "run" ? [a.target] : []));
+  return [...new Set(targets)];
+}
+
 interface PresetInfo {
   name: string;
   builtin: boolean;
@@ -754,7 +765,13 @@ export class PresetBar {
       <button class="mini" data-save-cancel hidden>Cancel</button>
       <button class="mini danger" data-delete title="Delete this saved layout">Delete</button>
       <button class="mini" data-folder title="Open the layouts folder (share layouts by copying the .json files)">Folder</button>
-    </span>`;
+    </span>
+    <div class="callout run-warn" data-run-warn hidden>
+      <p><b>This layout opens programs, files or web pages</b> when its buttons are pressed:</p>
+      <ul data-run-list></ul>
+      <p>Only load it if you trust where it came from.</p>
+      <span class="run-warn-buttons"><button class="mini" data-run-ok>Load it</button><button class="mini" data-run-cancel>Cancel</button></span>
+    </div>`;
   }
 
   constructor(
@@ -772,6 +789,31 @@ export class PresetBar {
     });
     q("[data-delete]").addEventListener("click", () => this.deleteClicked());
     q("[data-folder]").addEventListener("click", () => invoke("play_reveal_presets", { kind }).catch((e) => hooks.flash(String(e))));
+    q("[data-run-ok]").addEventListener("click", () => {
+      const p = this.pending;
+      this.warnRuns(null);
+      if (p) this.apply(p.layout, p.info);
+    });
+    q("[data-run-cancel]").addEventListener("click", () => {
+      this.warnRuns(null);
+      this.render();
+    });
+  }
+
+  /** A saved layout that opens things, waiting for the user to accept it. */
+  private pending: { layout: Layout; info: PresetInfo | null } | null = null;
+
+  private warnRuns(p: { layout: Layout; info: PresetInfo | null } | null): void {
+    this.pending = p;
+    const box = this.root.querySelector<HTMLElement>("[data-run-warn]")!;
+    box.hidden = !p;
+    if (p) this.root.querySelector("[data-run-list]")!.innerHTML = runTargets(p.layout).map((t) => `<li><code>${escape(t)}</code></li>`).join("");
+  }
+
+  private apply(layout: Layout, info: PresetInfo | null): void {
+    this.state.set(this.key, { info, edited: false });
+    this.hooks.load(layout);
+    this.render();
   }
 
   /** Load the list; each key's layout is matched by name (saved first, then built-in). */
@@ -786,6 +828,7 @@ export class PresetBar {
 
   select(key: string): void {
     this.key = key;
+    this.warnRuns(null);
     this.showName(false);
     this.render();
   }
@@ -827,9 +870,15 @@ export class PresetBar {
     const name = value.slice(2);
     try {
       const layout = await invoke<Layout>("play_load_preset", { kind: this.kind, name, builtin });
-      this.state.set(this.key, { info: this.presets.find((p) => p.name === name && p.builtin === builtin) ?? null, edited: false });
-      this.hooks.load(layout);
-      this.render();
+      const info = this.presets.find((p) => p.name === name && p.builtin === builtin) ?? null;
+      // A saved layout may come from someone else: say what it would open before it can.
+      if (!builtin && runTargets(layout).length) {
+        this.warnRuns({ layout, info });
+        this.render();
+        return;
+      }
+      this.warnRuns(null);
+      this.apply(layout, info);
     } catch (e) {
       this.hooks.flash(String(e));
       this.render();

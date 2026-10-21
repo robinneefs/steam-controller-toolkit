@@ -919,6 +919,12 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .app-row[hidden] { display: none; }
 .app-row .field { flex: 0 1 260px; min-width: 160px; height: 28px; }
 .app-row .mini { margin-left: auto; }
+.run-warn { flex-basis: 100%; margin: 0; font-size: 13px; }
+.run-warn[hidden] { display: none; }
+.run-warn p { margin: 0; }
+.run-warn ul { margin: 4px 0; padding-left: 20px; }
+.run-warn code { overflow-wrap: anywhere; }
+.run-warn-buttons { display: flex; gap: 6px; margin-top: 6px; }
 .layout-note { min-height: 1.4em; margin: 6px 8px 6px 0 !important; }
 
 .layout-editor {
