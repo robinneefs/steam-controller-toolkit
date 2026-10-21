@@ -6,9 +6,11 @@ import { CHARGE_STATES, describeSlot, onSnapshot, type Snapshot } from "./contro
 import { setAttr, setHidden, setText } from "./dom";
 import { controlPlayback, formatTime, importRecordings, playRecording, startRecording, stopRecording } from "./tape";
 import { AboutTab } from "./tabs/about";
+import { DeckTab } from "./tabs/deck";
 import { GamepadTab } from "./tabs/gamepad";
 import { HapticsTab } from "./tabs/haptics";
 import { KeyMouseTab } from "./tabs/keymouse";
+import { MacrosTab } from "./tabs/macros";
 import { MidiTab } from "./tabs/midi";
 import { OscTab } from "./tabs/osc";
 import { RawTab } from "./tabs/raw";
@@ -20,7 +22,7 @@ import { VisualizerTab } from "./tabs/visualizer";
 
 // Register new tools here; each becomes a tab.
 const recorder = new RecorderTab();
-const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new KeyMouseTab(), new GamepadTab(), new RawTab(), recorder, new SettingsTab(), new AboutTab()];
+const tabs: Tab[] = [new VisualizerTab(), new HapticsTab(), new MidiTab(), new OscTab(), new KeyMouseTab(), new GamepadTab(), new DeckTab(), new RawTab(), recorder, new MacrosTab(), new SettingsTab(), new AboutTab()];
 
 const nav = document.querySelector<HTMLElement>("#tabs")!;
 const navFoot = document.querySelector<HTMLElement>("#nav-foot")!;
@@ -168,9 +170,10 @@ function renderDots(snap: Snapshot): void {
   setDot("osc", osc.length ? "ok" : "", osc.length > 1 ? `Sending to ${osc.length} destinations` : osc.length ? `Sending to ${osc[0].address}` : "");
   const play = snap.play;
   if (play) {
-    const km = play.keymouse.enabled && !!play.active && play.active !== "pad";
-    const which = play.active === "desktop" ? "Desktop" : play.active === "game" ? "Game" : play.app;
-    setDot("keymouse", km ? "ok" : "", km ? `${which} layout` : "");
+    const km = play.keymouse.enabled && (play.active === "desktop" || play.active === "game");
+    setDot("keymouse", km ? "ok" : "", km ? `${play.active === "desktop" ? "Desktop" : "Game"} layout` : "");
+    const deck = play.deck.enabled;
+    setDot("deck", deck ? "ok" : "", deck ? (play.deck.app ? `${play.deck.app} page` : "All programs page") : "");
     const pad = play.gamepad.connected;
     setDot("gamepad", pad ? "ok" : "", pad ? (play.gamepad.player ? `Player ${play.gamepad.player}` : "Connected") : "");
   }

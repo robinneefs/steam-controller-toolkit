@@ -1,0 +1,19 @@
+/* The Command Deck's on-screen menu (overlay.html): a menu on glass, nothing else in the window. */
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "./deck-menus.css";
+
+:root {
+  --text: #eef3f8;
+  --muted: #a9b8c8;
+  --accent: #1a9fff;
+  color-scheme: dark;
+  font-family: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+body { display: grid; place-items: center; user-select: none; cursor: default; }
+#menu { width: 420px; padding: 16px; border: 1px solid #ffffff26; border-radius: 28px; background: #0d1520e6; box-shadow: 0 10px 40px #0009; }
+#menu[hidden] { display: none; }
+#menu.wheel { border-radius: 50%; padding: 12px; }
+#menu .deck-wheel .slice text { font-size: 12.5px; }
+#menu .deck-grid .cell { font-size: 15px; border-radius: 14px; }

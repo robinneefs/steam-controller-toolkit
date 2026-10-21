@@ -1,0 +1,14 @@
+/* Command Deck menus (src/deck-menus.ts), in the tab and on screen. */
+.deck-wheel { display: block; width: 100%; height: auto; overflow: visible; font-family: "Barlow", system-ui, sans-serif; }
+.deck-wheel .slice path { fill: #ffffff0d; stroke: #ffffff1f; stroke-width: 1; transition: fill 0.08s; }
+.deck-wheel .slice text { fill: var(--text, #eef3f8); font-size: 11.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.deck-wheel .slice.empty text { fill: var(--muted, #8ea0b4); font-weight: 500; }
+.deck-wheel .slice.sel path { fill: var(--accent, #1a9fff); stroke: #fff6; }
+.deck-wheel .slice.sel text { fill: #fff; }
+.deck-wheel .hub { fill: #0b121c; stroke: #ffffff1f; }
+.deck-wheel .hub-text { fill: var(--muted, #8ea0b4); font-size: 10px; font-weight: 600; text-anchor: middle; dominant-baseline: central; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.deck-grid { display: grid; gap: 5px; aspect-ratio: 1; }
+.deck-grid .cell { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 4px; overflow: hidden; border: 1px solid #ffffff1f; border-radius: 10px; background: #ffffff0d; color: var(--text, #eef3f8); font: 600 12px/1.15 "Barlow", system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; transition: background 0.08s; }
+.deck-grid .cell.empty { color: var(--muted, #8ea0b4); font-weight: 500; }
+.deck-grid .cell.sel { border-color: #fff6; background: var(--accent, #1a9fff); color: #fff; }

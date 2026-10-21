@@ -53,7 +53,13 @@
     play_setup: () => ({ ...structuredClone(data.play.setup), mode: params.get("slot") === "game" || tab === "gamepad" ? "game" : "desktop" }),
     play_list_presets: (args) => data.play.presets[args.kind],
     play_load_preset: (args) => structuredClone(data.play.builtin[args.kind].find((l) => l.name === args.name)),
+    deck_setup: () => structuredClone(data.play.deck_setup ?? { config: { enabled: false, overlay: true, deck: emptyDeck(), apps: [] }, wheel: [], grid: [] }),
   };
+
+  function emptyDeck() {
+    const none = { kind: "none" };
+    return { buttons: {}, left_stick: none, right_stick: none, left_pad: none, right_pad: none };
+  }
 
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },

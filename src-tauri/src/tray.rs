@@ -41,16 +41,29 @@ impl View {
 
     pub fn watched(&self) -> Watched {
         let on = |id: &str| self.visible && self.tab == id;
-        Watched { midi: on("midi"), osc: on("osc"), keymouse: on("keymouse"), gamepad: on("gamepad") }
+        Watched { midi: on("midi"), osc: on("osc"), keymouse: on("keymouse"), gamepad: on("gamepad"), deck: on("deck") }
     }
 }
 
-/// Keeps `View::visible` up to date; registered with `Builder::on_window_event`.
+/// Keeps `View::visible` up to date; registered with `Builder::on_window_event`. Only the main
+/// window counts: the Command Deck's on-screen menu (`overlay.rs`) is no view of the app.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    if window.label() != WINDOW {
+        return;
+    }
     let visible = match event {
         // Minimising and restoring both come as resizes.
         WindowEvent::Resized(_) => !window.is_minimized().unwrap_or(false),
-        WindowEvent::Destroyed => false,
+        WindowEvent::Destroyed => {
+            // The on-screen menu's window may still be there, so this may not be the last window
+            // to close: quit here unless the app stays in the tray (as the exit handler would).
+            let app = window.app_handle();
+            let stay = app.state::<crate::TrayAvailable>().0 && app.state::<SharedSettings>().lock().unwrap().close_to_tray();
+            if !stay {
+                app.exit(0);
+            }
+            false
+        }
         _ => return,
     };
     window.state::<SharedView>().lock().unwrap().visible = visible;

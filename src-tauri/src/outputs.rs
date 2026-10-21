@@ -1,5 +1,5 @@
-//! Every output that follows the controller: MIDI, OSC, and keyboard & mouse and the virtual
-//! gamepad (`play_out.rs`). `forward_events` feeds them every state report (~265 Hz) from
+//! Every output that follows the controller: MIDI, OSC, and keyboard & mouse, the virtual
+//! gamepad and the Command Deck (`play_out.rs`). `forward_events` feeds them every state report (~265 Hz) from
 //! whatever the UI shows, live input or a replay, and has them let go when that switches.
 
 use std::sync::{Arc, Mutex};
@@ -23,6 +23,7 @@ pub struct Watched {
     pub osc: bool,
     pub keymouse: bool,
     pub gamepad: bool,
+    pub deck: bool,
 }
 
 #[derive(Clone)]
@@ -36,7 +37,7 @@ impl Outputs {
     pub fn process(&self, s: &ControllerState, battery: Option<BatteryStatus>, watched: Watched) {
         self.midi.lock().unwrap().process(s, watched.midi);
         self.osc.lock().unwrap().process(s, battery.map(|b| b.level), watched.osc);
-        self.play.lock().unwrap().process(s, watched.keymouse || watched.gamepad);
+        self.play.lock().unwrap().process(s, watched.keymouse || watched.gamepad, watched.deck);
     }
 
     /// Let go of everything held (notes, buttons), e.g. when switching between live input and a
@@ -52,6 +53,6 @@ impl Outputs {
     pub fn tick(&self, watched: Watched) {
         self.midi.lock().unwrap().tick();
         self.osc.lock().unwrap().tick();
-        self.play.lock().unwrap().tick(watched.keymouse);
+        self.play.lock().unwrap().tick(watched.deck);
     }
 }

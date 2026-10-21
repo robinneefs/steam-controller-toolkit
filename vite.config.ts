@@ -10,6 +10,12 @@ export default defineConfig(() => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  // Two pages: the app, and the Command Deck's on-screen menu (src-tauri/src/overlay.rs).
+  build: {
+    rolldownOptions: {
+      input: { main: "index.html", overlay: "overlay.html" },
+    },
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,

@@ -1,12 +1,15 @@
 // The layout editor shared by the Keyboard & mouse and Gamepad tabs: a card per group of controls,
 // a binding picker, and the bars both tabs have on top (on/off, mode, presets).
 import { invoke } from "@tauri-apps/api/core";
-import type { Action, Activation, Directions, Layout, PadInput, PadMode, PlayStatus, Snapshot, StickMode } from "../controller";
+import type { Action, Activation, Directions, Layout, PadMode, PlayStatus, Snapshot, StickMode } from "../controller";
 import { setAttr, setHtml, setText } from "../dom";
 import { addHelp, helpIcon } from "../help";
 import { powerHtml } from "./power";
 import { KEY_LISTS, KEYS, MODIFIERS, byChar, keyFromCode, keyLabel, keysLabel, shortcutKey } from "./keys";
 import { BUTTONS } from "./sources";
+import { MOUSE_LABELS, NONE, PAD_INPUTS, SCROLL_LABELS, actionLabel, escape } from "./actions";
+
+export { actionLabel, PAD_INPUTS } from "./actions";
 
 /** Every control a layout binds; mirrors `CONTROLS` in src-tauri/src/layout.rs (its index is its lit bit). */
 export const CONTROLS = [
@@ -24,56 +27,14 @@ const CONTROL_LABELS: Record<string, string> = {
 };
 const controlLabel = (c: string) => CONTROL_LABELS[c] ?? c;
 
-export const PAD_INPUTS: [PadInput, string][] = [
-  ["a", "A"], ["b", "B"], ["x", "X"], ["y", "Y"], ["lb", "LB"], ["rb", "RB"], ["lt", "LT"], ["rt", "RT"],
-  ["ls", "LS click"], ["rs", "RS click"], ["back", "Back"], ["start", "Start"], ["guide", "Guide"],
-  ["up", "D-pad ↑"], ["down", "D-pad ↓"], ["left", "D-pad ←"], ["right", "D-pad →"],
-];
-const PAD_LABELS = new Map(PAD_INPUTS);
-const MOUSE_LABELS: Record<string, string> = { left: "Left click", right: "Right click", middle: "Middle click", back: "Mouse back", forward: "Mouse forward" };
-const SCROLL_LABELS: Record<string, string> = { up: "Scroll up", down: "Scroll down", left: "Scroll left", right: "Scroll right" };
-
-const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`);
-const NONE: Action = { kind: "none" };
-
-export function actionLabel(a: Action | undefined): string {
-  switch (a?.kind ?? "none") {
-    case "key": {
-      const k = a as Extract<Action, { kind: "key" }>;
-      return keysLabel(k.keys) + (k.repeat ? " ⟳" : "");
-    }
-    case "mouse":
-      return MOUSE_LABELS[(a as Extract<Action, { kind: "mouse" }>).button];
-    case "scroll": {
-      const s = a as Extract<Action, { kind: "scroll" }>;
-      return SCROLL_LABELS[s.dir] + (s.repeat ? " ⟳" : "");
-    }
-    case "pad":
-      return `Xbox ${PAD_LABELS.get((a as Extract<Action, { kind: "pad" }>).input)}`;
-    case "switch":
-      return "Desktop ⇄ Game";
-    case "run": {
-      // The file or page name is enough to tell them apart.
-      const t = (a as Extract<Action, { kind: "run" }>).target.replace(/[\\/]+$/, "");
-      return `Open ${/^[a-z][\w+.-]*:\/\//i.test(t) ? t.replace(/^[a-z][\w+.-]*:\/\//i, "") : t.split(/[\\/]/).pop()}`;
-    }
-    default:
-      return "–";
-  }
-}
-
 addHelp({
   "play-mode": `<b>Desktop</b> and <b>Game</b> each have a layout. With both outputs on, the desktop gets keyboard and mouse
     and games get the gamepad. The <b>Steam button</b> switches (in every built-in layout), with a click you can feel.<ul>
     <li><b>Full-screen apps use Game</b>: switches to Game when a full-screen app is in front, and back when it isn't.
       A switch by hand holds until another app goes full screen.</li></ul>`,
   "play-bind": `Click a binding to change it: press a key or combination, or pick a mouse button, a scroll, an Xbox
-    input (Gamepad tab), <b>Desktop ⇄ Game</b>, a program, file or web page to <b>open</b>, or nothing. <b>⟳</b>
-    repeats while held, like a held key. Rows light up as you press them.`,
-  "play-radial": `A menu you use by feel, like a ring of shortcuts under your thumb. The pad is cut into a slice per
-    item: the first at the top, then clockwise. Slide your thumb to an item (you feel a tick on each), then
-    <b>lift</b> to use it, or <b>click</b> the pad if <b>Click to pick</b> is on. Lift or click in the centre to
-    pick nothing.`,
+    input (Gamepad tab), <b>Desktop ⇄ Game</b>, or nothing. <b>⟳</b> repeats while held, like a held key.
+    Rows light up as you press them.`,
   "play-gyro": `Aim by moving the controller. It is never needed; turn it on where it helps.<ul>
     <li><b>Mouse</b>: precise; for games that take mouse and controller at once, and the desktop.</li>
     <li><b>Right stick</b>: works in every game, a little less precise.</li>
@@ -86,9 +47,14 @@ addHelp({
 
 // ---------- Binding picker ----------
 
-interface PickOptions {
+export interface PickOptions {
   /** Offer the virtual Xbox controller's inputs. */
   pad: boolean;
+  /** Offer opening a program, file or web page (the Command Deck). */
+  run?: boolean;
+  /** A menu item's name: shows a name field, and `onLabel` gets every edit of it. */
+  label?: string;
+  onLabel?: (label: string) => void;
 }
 
 /** The popover that picks an action; one for both tabs. */
@@ -102,6 +68,7 @@ class BindPicker {
   private combo: string[] = [];
   private anchor: HTMLElement | null = null;
   private openedAt = 0;
+  private onLabel: ((label: string) => void) | null = null;
 
   constructor() {
     this.el.className = "bind-pop";
@@ -109,6 +76,10 @@ class BindPicker {
     document.body.appendChild(this.el);
     this.el.addEventListener("click", (e) => this.clicked(e.target as Element));
     this.el.addEventListener("change", (e) => this.changed(e.target as HTMLElement));
+    this.el.addEventListener("input", (e) => {
+      const el = e.target as HTMLInputElement;
+      if (el.matches("[data-label]")) this.onLabel?.(el.value.trim());
+    });
     document.addEventListener("keydown", (e) => this.keydown(e), true);
     document.addEventListener("keyup", (e) => this.keyup(e), true);
     document.addEventListener("mousedown", (e) => {
@@ -134,8 +105,10 @@ class BindPicker {
     };
     const repeat = current.kind === "key" || current.kind === "scroll" ? current.repeat : false;
     const more = KEY_LISTS.map(([group, keys]) => `<optgroup label="${group}">${keys.map((k) => `<option value="${k}">${escape(keyLabel(k))}</option>`).join("")}</optgroup>`).join("");
+    this.onLabel = opts.onLabel ?? null;
     this.el.innerHTML = `
       <div class="bind-pop-head"><b>${escape(title)}</b><button class="icon-btn" data-close title="Close">×</button></div>
+      ${opts.label !== undefined ? `<label class="bind-sec"><span>Name</span><input class="field" data-label maxlength="40" placeholder="${escape(actionLabel(current))}" value="${escape(opts.label)}" /></label>` : ""}
       <button class="capture" data-capture>${current.kind === "key" ? `<b>${escape(actionLabel(current))}</b> · ` : ""}Click, then press a key or combination</button>
       <div class="bind-sec"><span>More keys</span>
         <select class="field" data-more><option value="">Win, media keys, F13…</option>${more}</select>
@@ -143,9 +116,9 @@ class BindPicker {
       <div class="bind-sec"><span>Mouse</span><div class="chips">${(["left", "right", "middle", "back", "forward"] as const).map((b) => chip({ kind: "mouse", button: b }, MOUSE_LABELS[b])).join("")}</div></div>
       <div class="bind-sec"><span>Scroll</span><div class="chips">${(["up", "down", "left", "right"] as const).map((d) => chip({ kind: "scroll", dir: d, repeat }, SCROLL_LABELS[d].replace("Scroll ", ""))).join("")}</div></div>
       ${opts.pad ? `<div class="bind-sec"><span>Xbox</span><div class="chips">${PAD_INPUTS.map(([i, l]) => chip({ kind: "pad", input: i }, l)).join("")}</div></div>` : ""}
-      <div class="bind-sec"><span>Open</span><div class="run-row">
+      ${opts.run ? `<div class="bind-sec"><span>Open</span><div class="run-row">
         <input class="field" data-run placeholder="Program, file, folder or https://…" value="${current.kind === "run" ? escape(current.target) : ""}" spellcheck="false" />
-        <button class="mini" data-run-set title="Open this once per press">Set</button></div></div>
+        <button class="mini" data-run-set title="Open this once per press">Set</button></div></div>` : ""}
       <div class="bind-sec"><span>Other</span><div class="chips">${chip({ kind: "switch" }, "Desktop ⇄ Game")}${chip(NONE, "Nothing")}</div></div>`;
     this.el.hidden = false;
     this.openedAt = performance.now();
@@ -162,6 +135,7 @@ class BindPicker {
     this.capturing = false;
     this.anchor = null;
     this.onPick = null;
+    this.onLabel = null;
   }
 
   private repeat(): boolean {
@@ -269,6 +243,15 @@ class BindPicker {
 let picker: BindPicker | null = null;
 const getPicker = () => (picker ??= new BindPicker());
 
+/** Open the binding picker under `anchor` (the Command Deck's editor uses it too). */
+export function pickAction(anchor: HTMLElement, title: string, current: Action, opts: PickOptions, onPick: (a: Action) => void): void {
+  getPicker().open(anchor, title, current, opts, onPick);
+}
+
+export function closePicker(): void {
+  picker?.close();
+}
+
 // ---------- The editor ----------
 
 type Part = "left_stick" | "right_stick" | "left_pad" | "right_pad";
@@ -276,16 +259,6 @@ const PART_TITLES: Record<Part, string> = { left_stick: "Left stick", right_stic
 const PART_CLICK: Record<Part, string> = { left_stick: "L3", right_stick: "R3", left_pad: "LPadClick", right_pad: "RPadClick" };
 const DIRS = ["up", "down", "left", "right"] as const;
 const DIR_LABELS = { up: "Up", down: "Down", left: "Left", right: "Right" };
-/** How many items a radial menu can have. */
-const RADIAL_SIZES = [2, 3, 4, 5, 6, 8];
-const ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
-/** Item `i` of `n`: its number and the direction it points (the first is at the top, clockwise). */
-const radialLabel = (i: number, n: number) => `${i + 1}  ${ARROWS[Math.round((i * 8) / n) % 8]}`;
-/** A new radial menu's items: copy, paste, undo, redo (the D-pad on the Gamepad tab). */
-const radialItems = (pad: boolean): Action[] =>
-  pad
-    ? (["up", "right", "down", "left"] as const).map((input) => ({ kind: "pad", input }))
-    : ["C", "V", "Z", "Y"].map((k) => ({ kind: "key", keys: ["Ctrl", k], repeat: false }));
 
 const keys4 = (u: string, l: string, d: string, r: string): Directions => ({
   up: { kind: "key", keys: [u], repeat: false },
@@ -351,7 +324,6 @@ export class LayoutEditor {
   private layout: Layout | null = null;
   private lastLit = -1;
   private lastGyro = false;
-  private lastRadial = "";
 
   constructor(private root: HTMLElement, private opts: EditorOptions) {
     root.classList.add("layout-editor");
@@ -374,17 +346,6 @@ export class LayoutEditor {
     return this.layout;
   }
 
-  /** Light each trackpad's radial menu item under the thumb (`preview.radial`). */
-  showRadial(radial: [number | null, number | null]): void {
-    const at = `${radial[0]},${radial[1]}`;
-    if (at === this.lastRadial) return;
-    this.lastRadial = at;
-    this.root.querySelectorAll<HTMLElement>("[data-radial]").forEach((el) => {
-      const [side, i] = el.dataset.radial!.split(":").map(Number);
-      el.classList.toggle("lit", radial[side] === i);
-    });
-  }
-
   /** Light the rows and cards in use (`preview.lit`). */
   showLit(lit: number, gyro: boolean): void {
     if (lit === this.lastLit && gyro === this.lastGyro) return;
@@ -403,7 +364,6 @@ export class LayoutEditor {
     const l = this.layout;
     if (!l) return;
     this.lastLit = -1;
-    this.lastRadial = "";
     const cards = [
       ...CARDS.slice(0, 4).map(([title, controls]) => this.buttonsCard(title, controls)),
       ...(["left_stick", "right_stick", "left_pad", "right_pad"] as Part[]).map((p) => this.partCard(p)),
@@ -430,7 +390,7 @@ export class LayoutEditor {
     const stick = part.endsWith("stick");
     const kinds: [string, string][] = stick
       ? [["none", "Nothing"], ...(this.opts.pad || mode.kind === "stick" ? [["stick", "Xbox stick"] as [string, string]] : []), ["directions", "Directions"], ["mouse", "Mouse pointer"], ["scroll", "Scroll"]]
-      : [["none", "Nothing"], ["mouse", "Touchpad mouse"], ["scroll", "Swipe to scroll"], ...(this.opts.pad || mode.kind === "stick" ? [["stick", "Xbox stick"] as [string, string]] : []), ["directions", "Directions (4 zones)"], ["radial", "Radial menu"]];
+      : [["none", "Nothing"], ["mouse", "Touchpad mouse"], ["scroll", "Swipe to scroll"], ...(this.opts.pad || mode.kind === "stick" ? [["stick", "Xbox stick"] as [string, string]] : []), ["directions", "Directions (4 zones)"]];
     const select = `<select class="field" data-mode="${part}" title="What the ${PART_TITLES[part].toLowerCase()} does">${kinds.map(([k, t]) => `<option value="${k}"${k === mode.kind ? " selected" : ""}>${t}</option>`).join("")}</select>`;
     const click = PART_CLICK[part];
     return `<section class="card" data-lit="${LIT[part]}"><h4>${PART_TITLES[part]}${select}</h4>
@@ -472,13 +432,6 @@ export class LayoutEditor {
           : `<label class="chk opt-chk" title="Directions press only while the pad is clicked; off: as soon as it's touched"><input type="checkbox" data-o="${part}.click" ${m.click ? "checked" : ""} />Only while clicked</label>`;
         return extra + DIRS.map((d) => this.bindRow(`d:${part}.${d}`, DIR_LABELS[d], m[d])).join("") + fills;
       }
-      case "radial": {
-        const n = m.items.length;
-        const side = part === "left_pad" ? 0 : 1;
-        return `<label class="opt"><span>Items ${helpIcon("play-radial")}</span><select class="field" data-radial-n="${part}">${RADIAL_SIZES.map((k) => `<option value="${k}"${k === n ? " selected" : ""}>${k}</option>`).join("")}</select></label>
-          <label class="chk opt-chk" title="Pick by clicking the pad; off: by lifting your thumb"><input type="checkbox" data-o="${part}.click" ${m.click ? "checked" : ""} />Click to pick</label>` +
-          m.items.map((a, i) => this.bindRow(`r:${part}.${i}`, radialLabel(i, n), a).replace('class="bind-row"', `class="bind-row" data-radial="${side}:${i}"`)).join("");
-      }
       default:
         return "";
     }
@@ -512,10 +465,6 @@ export class LayoutEditor {
   private getAction(path: string): Action {
     const l = this.layout!;
     if (path.startsWith("c:")) return l.buttons[path.slice(2)] ?? NONE;
-    if (path.startsWith("r:")) {
-      const [part, i] = path.slice(2).split(".");
-      return (l[part as Part] as Extract<PadMode, { kind: "radial" }>).items[Number(i)] ?? NONE;
-    }
     const [part, dir] = path.slice(2).split(".") as [Part, (typeof DIRS)[number]];
     return (l[part] as unknown as Directions)[dir] ?? NONE;
   }
@@ -525,9 +474,6 @@ export class LayoutEditor {
     if (path.startsWith("c:")) {
       if (a.kind === "none") delete l.buttons[path.slice(2)];
       else l.buttons[path.slice(2)] = a;
-    } else if (path.startsWith("r:")) {
-      const [part, i] = path.slice(2).split(".");
-      (l[part as Part] as Extract<PadMode, { kind: "radial" }>).items[Number(i)] = a;
     } else {
       const [part, dir] = path.slice(2).split(".") as [Part, (typeof DIRS)[number]];
       (l[part] as unknown as Directions)[dir] = a;
@@ -541,7 +487,7 @@ export class LayoutEditor {
       const path = bind.dataset.bind!;
       const label = bind.closest(".bind-row")?.querySelector(".bind-ctl")?.textContent ?? "";
       const card = bind.closest(".card")?.querySelector("h4")?.firstChild?.textContent?.trim() ?? "";
-      const title = path.startsWith("d:") ? `${card}: ${label}` : path.startsWith("r:") ? `${card}: item ${label}` : label;
+      const title = path.startsWith("d:") ? `${card}: ${label}` : label;
       getPicker().open(bind, title, this.getAction(path), { pad: this.opts.pad }, (a) => {
         this.setAction(path, a);
         bind.textContent = actionLabel(a);
@@ -565,13 +511,6 @@ export class LayoutEditor {
     if (el.matches("[data-mode]")) {
       const part = el.dataset.mode as Part;
       (l as unknown as Record<Part, StickMode | PadMode>)[part] = this.defaultMode(part, (el as HTMLSelectElement).value);
-      this.render();
-      return this.opts.onChange();
-    }
-    if (el.matches("[data-radial-n]")) {
-      const m = l[el.dataset.radialN as Part] as Extract<PadMode, { kind: "radial" }>;
-      const n = Number((el as HTMLSelectElement).value);
-      m.items = Array.from({ length: n }, (_, i) => m.items[i] ?? NONE);
       this.render();
       return this.opts.onChange();
     }
@@ -626,7 +565,6 @@ export class LayoutEditor {
       case "scroll": return { kind, speed: 12 };
       case "stick": return { kind, target: side };
       case "directions": return { kind, click: true, ...dirs };
-      case "radial": return { kind, click: false, items: radialItems(this.opts.pad) };
       default: return { kind: "none" };
     }
   }
@@ -670,7 +608,6 @@ export function playStatusText(p: PlayStatus, kind: PlayKind): [string, string] 
     if (k.error) return ["warn", k.error];
     if (p.active === "desktop") return ["ok", "Sending · Desktop layout"];
     if (p.active === "game") return ["ok", `Sending · Game layout${p.fullscreen_app ? ` (${p.fullscreen_app})` : ""}`];
-    if (p.active?.startsWith("app:")) return ["ok", `Sending · ${p.app} layout`];
     return ["", "On · the gamepad plays in Game mode"];
   }
   const g = p.gamepad;
@@ -733,7 +670,6 @@ export function runTargets(l: Layout): string[] {
   const actions: Action[] = [...Object.values(l.buttons)];
   for (const m of [l.left_stick, l.right_stick, l.left_pad, l.right_pad]) {
     if (m.kind === "directions") actions.push(...DIRS.map((d) => m[d]));
-    if (m.kind === "radial") actions.push(...m.items);
   }
   const targets = actions.flatMap((a) => (a?.kind === "run" ? [a.target] : []));
   return [...new Set(targets)];
