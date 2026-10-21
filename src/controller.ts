@@ -243,9 +243,7 @@ export type PadMode =
   | { kind: "mouse"; speed: number; trackball: boolean }
   | { kind: "scroll"; speed: number }
   | { kind: "stick"; target: Side }
-  | ({ kind: "directions"; click: boolean } & Directions)
-  /** A menu used by feel: a slice per item, the first at the top, clockwise; plays on click or lift. */
-  | { kind: "radial"; items: Action[]; click: boolean };
+  | ({ kind: "directions"; click: boolean } & Directions);
 
 export type GyroOutput = "none" | "mouse" | "stick" | "steer";
 export type Activation =
@@ -282,22 +280,95 @@ export interface Layout {
 }
 
 export type PlayMode = "desktop" | "game";
-/** One of the layouts: Keyboard & mouse for Desktop, for Game and per program (`apps` index), and
- * the Gamepad's. */
-export type PlaySlot = "desktop" | "game" | "pad" | `app:${number}`;
-
-/** A Keyboard & mouse layout that plays while one program is in front, whatever the mode. */
-export interface AppLayout {
-  /** The program's file name (`Photoshop.exe`); any case, `.exe` optional. */
-  app: string;
-  layout: Layout;
-}
+/** One of the three layouts: Keyboard & mouse for Desktop and for Game, and the Gamepad's. */
+export type PlaySlot = "desktop" | "game" | "pad";
 
 export interface KeyMouseConfig {
   enabled: boolean;
   desktop: Layout;
   game: Layout;
-  apps: AppLayout[];
+}
+
+// ---------- Command Deck (src-tauri/src/deck.rs, DeckConfig in play_out.rs) ----------
+
+/** One entry of a wheel or grid. */
+export interface DeckItem {
+  /** Shown in the menu; empty: the action's own name. */
+  label: string;
+  action: Action;
+}
+
+/** Wheels: when the stick comes back to the centre; grids: when the thumb lifts. Click: on click, held. */
+export type Pick = "release" | "click";
+
+export type DeckMenu =
+  | { kind: "none" }
+  /** A slice per item, the first centred at the top, clockwise. */
+  | { kind: "wheel"; items: DeckItem[]; pick: Pick }
+  /** Trackpads: cols x rows cells, row by row from the top left. */
+  | { kind: "grid"; cols: number; rows: number; items: DeckItem[]; pick: Pick };
+
+export interface Deck {
+  /** Control name (`CONTROLS` in tabs/layout-editor.ts) to action; missing ones are left to the layout. */
+  buttons: Record<string, Action>;
+  left_stick: DeckMenu;
+  right_stick: DeckMenu;
+  left_pad: DeckMenu;
+  right_pad: DeckMenu;
+}
+
+export type DeckPart = "left_stick" | "right_stick" | "left_pad" | "right_pad";
+export const DECK_PARTS: DeckPart[] = ["left_stick", "right_stick", "left_pad", "right_pad"];
+
+/** A page that plays while one program is in front. */
+export interface AppDeck {
+  /** The program's file name (`Photoshop.exe`); any case, `.exe` optional. */
+  app: string;
+  deck: Deck;
+}
+
+export interface DeckConfig {
+  enabled: boolean;
+  /** Show a menu on screen while its stick or trackpad is touched. */
+  overlay: boolean;
+  /** The page for every program without one of its own. */
+  deck: Deck;
+  apps: AppDeck[];
+}
+
+/** What `deck_setup` returns: the config, and what a new wheel and grid hold. */
+export interface DeckSetup {
+  config: DeckConfig;
+  wheel: DeckItem[];
+  grid: DeckItem[];
+}
+
+export interface MenuView {
+  open: boolean;
+  /** The item under the thumb, or playing. */
+  selected: number | null;
+}
+
+/** What the on-screen menu shows (`OverlayMenu` in play_out.rs). */
+export interface OverlayMenu {
+  part: DeckPart;
+  menu: DeckMenu;
+  selected: number | null;
+}
+
+export interface DeckStatus {
+  enabled: boolean;
+  overlay: boolean;
+  supported: boolean;
+  apps_supported: boolean;
+  /** The page playing (null: the default page) and its program. */
+  page: number | null;
+  app: string | null;
+  /** Programs seen in front lately, most recent first. */
+  recent_apps: string[];
+  run_error: string | null;
+  /** The page the tab shows, live. */
+  preview: { page: number | null; shown: boolean; lit: number; menus: [MenuView, MenuView, MenuView, MenuView] };
 }
 
 export interface GamepadConfig {
@@ -331,21 +402,9 @@ export interface PlayStatus {
   auto_switch: boolean;
   /** The full-screen app auto switch sees, by file name. */
   fullscreen_app: string | null;
-  /** The program in front whose own layout plays. */
-  app: string | null;
-  /** Programs seen in front lately, most recent first. */
-  recent_apps: string[];
   /** The layout in play. */
   active: PlaySlot | null;
-  keymouse: {
-    enabled: boolean;
-    supported: boolean;
-    error: string | null;
-    /** The last program, file or URL that couldn't be opened, and why. */
-    run_error: string | null;
-    /** Per-program layouts work here. */
-    apps_supported: boolean;
-  };
+  keymouse: { enabled: boolean; supported: boolean; error: string | null };
   gamepad: {
     enabled: boolean;
     /** null while being checked. */
@@ -372,9 +431,8 @@ export interface PlayStatus {
     gyro_active: boolean;
     /** Bit per control in use (`CONTROLS` index, then the sticks, pads and gyro). */
     lit: number;
-    /** Each trackpad's radial menu item under the thumb or playing. */
-    radial: [number | null, number | null];
   };
+  deck: DeckStatus;
 }
 
 /** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */

@@ -13,6 +13,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
 
+mod deck;
 mod devices;
 #[cfg(windows)]
 mod inject_win;
@@ -27,6 +28,7 @@ mod midi_win;
 mod osc;
 mod osc_out;
 mod outputs;
+mod overlay;
 mod play_out;
 mod shaping;
 mod tape;
@@ -348,6 +350,31 @@ fn play_set_mode(mode: Mode, play: State<'_, SharedPlay>) {
     play.lock().unwrap().set_mode(mode);
 }
 
+/// The Command Deck tab's settings and pages, and what a new wheel and grid hold.
+#[derive(Serialize)]
+struct DeckSetup {
+    config: play_out::DeckConfig,
+    wheel: Vec<deck::Item>,
+    grid: Vec<deck::Item>,
+}
+
+#[tauri::command]
+fn deck_setup(play: State<'_, SharedPlay>) -> DeckSetup {
+    DeckSetup { config: play.lock().unwrap().config().deck.clone(), wheel: deck::default_wheel(), grid: deck::default_grid() }
+}
+
+/// Command Deck on/off, the on-screen menu and every page (the tab sends them after every edit).
+#[tauri::command]
+fn deck_set(config: play_out::DeckConfig, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_deck(config);
+}
+
+/// Which page the Command Deck tab shows (None: the default page), or `open` false when it closes.
+#[tauri::command]
+fn deck_set_preview(page: Option<usize>, open: bool, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().set_deck_preview(open.then_some(page));
+}
+
 /// Which layout the tab in view shows, for its live view.
 #[tauri::command]
 fn play_set_preview(slot: Option<Slot>, play: State<'_, SharedPlay>) {
@@ -458,6 +485,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, hub: Hub, tape: 
     let mut playing = false;
     // The rumble last sent to the live controller for the virtual pad (large, small motor).
     let mut rumble_sent = (0u8, 0u8);
+    let mut overlay = overlay::Overlay::new(app.clone());
     loop {
         // What the UI can see: output tabs in view, and whether a window shows at all. While it
         // is minimised or closed to the tray, nobody sees the UI: send it nothing.
@@ -515,10 +543,15 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, hub: Hub, tape: 
         // Outside the tape lock: reconnecting to a port can take a moment.
         outputs.tick();
         // The mode switch click and the game's rumble go to the live controller, not during a replay.
-        let (haptics, rumble) = {
+        let (haptics, rumble, overlay_wanted, menu) = {
             let mut play = outputs.play.lock().unwrap();
-            (play.take_haptics(), if playing { (0, 0) } else { play.rumble() })
+            (play.take_haptics(), if playing { (0, 0) } else { play.rumble() }, play.overlay_wanted(), play.take_overlay())
         };
+        // The Command Deck's on-screen menu, outside the lock.
+        overlay.set_wanted(overlay_wanted);
+        if let Some(menu) = menu {
+            overlay.show(menu);
+        }
         match live.snap.state.and(live.snap.slot.as_deref()) {
             Some(slot) => {
                 let send = |haptic| {
@@ -616,6 +649,9 @@ pub fn run() {
             play_set_auto_switch,
             play_set_mode,
             play_set_preview,
+            deck_setup,
+            deck_set,
+            deck_set_preview,
             play_list_presets,
             play_load_preset,
             play_save_preset,
@@ -712,6 +748,7 @@ mod screenshot_data {
             keymouse: play_out::KeyMouseConfig { enabled: true, ..Default::default() },
             gamepad: play_out::GamepadConfig { enabled: true, ..Default::default() },
             auto_switch: true,
+            ..Default::default()
         };
         let mut km_engine = layout::Engine::new(play_setup.keymouse.desktop.clone());
         let mut pad_engine = layout::Engine::new(play_setup.gamepad.layout.clone());
@@ -760,7 +797,7 @@ mod screenshot_data {
                     mode: Mode::Desktop,
                     auto_switch: true,
                     active: Some(Slot::Desktop),
-                    keymouse: play_out::KeyMouseStatus { enabled: true, supported: true, apps_supported: true, ..Default::default() },
+                    keymouse: play_out::KeyMouseStatus { enabled: true, supported: true, error: None },
                     gamepad: play_out::GamepadStatus {
                         enabled: true,
                         support: Some(devices::PadSupport::Ready),

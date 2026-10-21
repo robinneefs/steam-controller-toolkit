@@ -287,10 +287,6 @@ pub enum PadMode {
         dirs: Directions,
         click: bool,
     },
-    /// A menu used by feel: the ring is cut into one slice per item, the first centred at the top,
-    /// clockwise, with a haptic tick on entering one. The item under the thumb plays when the pad
-    /// is clicked (`click`), else when the thumb lifts; lifting in the centre picks nothing.
-    Radial { items: Vec<Action>, click: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -440,19 +436,36 @@ pub struct Frame {
     pub switch_held: bool,
     /// Run actions pressed.
     pub runs: Vec<String>,
-    /// Bit per trackpad (0 left, 1 right) whose radial menu moved to another item: tick it.
+    /// Bit per side (0 left, 1 right) whose Command Deck menu moved to another item: tick it.
     pub ticks: u8,
-    /// Each trackpad's radial item under the thumb or playing, for the tabs to light up.
-    pub radial: [Option<u8>; 2],
     pub gyro_active: bool,
     /// Bit per control in use ([`CONTROLS`] index, then the `LIT_*` parts), for the tabs to light up.
     pub lit: u64,
 }
 
+impl Frame {
+    /// Add what another engine (the Command Deck) makes of the same report.
+    pub fn merge(&mut self, o: &Frame) {
+        self.pad.buttons |= o.pad.buttons;
+        o.keys.iter().for_each(|k| self.keys.insert(k));
+        o.by_char.iter().for_each(|k| self.by_char.insert(k));
+        self.mouse_buttons |= o.mouse_buttons;
+        for i in 0..2 {
+            self.mouse[i] += o.mouse[i];
+            self.scroll[i] += o.scroll[i];
+        }
+        self.taps.extend_from_slice(&o.taps);
+        self.runs.extend_from_slice(&o.runs);
+        self.switch |= o.switch;
+        self.switch_held |= o.switch_held;
+        self.ticks |= o.ticks;
+    }
+}
+
 // ---------- Compiled form ----------
 
 #[derive(Debug, Clone, PartialEq)]
-enum Act {
+pub(crate) enum Act {
     None,
     Keys { keys: Vec<KeyId>, repeat: bool, by_char: bool },
     Mouse(u8),
@@ -463,7 +476,7 @@ enum Act {
 }
 
 impl Act {
-    fn new(a: &Action) -> Act {
+    pub(crate) fn new(a: &Action) -> Act {
         match a {
             Action::None => Act::None,
             Action::Key { keys, repeat } => {
@@ -487,7 +500,7 @@ impl Act {
 
 /// Where a binding is in its press, for edges and repeats.
 #[derive(Debug, Clone, Copy, Default)]
-struct Press {
+pub(crate) struct Press {
     down: bool,
     since: Duration,
     last_repeat: Duration,
@@ -501,11 +514,6 @@ const SCROLL_REPEAT_EVERY: Duration = Duration::from_millis(90);
 const TRIGGER_PRESS: f32 = 0.3;
 /// Pad zones start this far from the centre (fraction of the radius).
 const PAD_ZONE: f32 = 0.35;
-/// A radial item picked by lifting the thumb is pressed this long.
-const RADIAL_TAP: Duration = Duration::from_millis(40);
-/// The thumb has to go this far (radians) past a radial slice's edge to change item, so resting on
-/// the edge doesn't tick back and forth.
-const RADIAL_HYSTERESIS: f32 = 0.08;
 const PAD_RANGE: f32 = 65536.0;
 
 impl Press {
@@ -530,7 +538,7 @@ impl Press {
 }
 
 /// Apply an action that is `pressed` (and for pad triggers, how far: `analog` 0..1).
-fn apply(a: &Act, pressed: bool, analog: f32, p: &mut Press, now: Duration, f: &mut Frame) {
+pub(crate) fn apply(a: &Act, pressed: bool, analog: f32, p: &mut Press, now: Duration, f: &mut Frame) {
     let rising = p.step(pressed, now);
     match a {
         Act::None => {}
@@ -644,9 +652,8 @@ struct Compiled {
     buttons: Vec<(Act, Option<u32>)>,
     left_stick: [Act; 4],
     right_stick: [Act; 4],
-    /// A trackpad's directions (up, down, left, right) or radial items.
-    left_pad: Vec<Act>,
-    right_pad: Vec<Act>,
+    left_pad: [Act; 4],
+    right_pad: [Act; 4],
     gyro_button: Option<u32>,
 }
 
@@ -665,9 +672,8 @@ impl Compiled {
             _ => Default::default(),
         };
         let pad = |m: &PadMode| match m {
-            PadMode::Directions { dirs, .. } => dirs_compiled(dirs).into(),
-            PadMode::Radial { items, .. } => items.iter().map(Act::new).collect(),
-            _ => Vec::new(),
+            PadMode::Directions { dirs, .. } => dirs_compiled(dirs),
+            _ => Default::default(),
         };
         Compiled {
             buttons: CONTROLS
@@ -692,31 +698,6 @@ impl Default for Act {
     }
 }
 
-/// Where a radial menu is: the item under the thumb, the one held by a click, a lift's tap.
-#[derive(Debug, Clone, Copy, Default)]
-struct Radial {
-    selected: Option<usize>,
-    held: Option<usize>,
-    tap: Option<(usize, Duration)>,
-    clicked: bool,
-}
-
-/// The slice of `n` under the thumb at (x, y) (y up), the first centred at the top, clockwise.
-/// `current` stays until the thumb is clearly past its edge.
-fn radial_slice(x: f32, y: f32, n: usize, current: Option<usize>) -> usize {
-    use std::f32::consts::TAU;
-    let width = TAU / n as f32;
-    let angle = x.atan2(y).rem_euclid(TAU);
-    let slice = ((angle / width).round() as usize) % n;
-    match current {
-        Some(c) if c < n && c != slice => {
-            let off = (angle - c as f32 * width + TAU / 2.0).rem_euclid(TAU) - TAU / 2.0;
-            if off.abs() > width / 2.0 + RADIAL_HYSTERESIS { slice } else { c }
-        }
-        _ => slice,
-    }
-}
-
 /// A trackpad's motion between reports, and a trackball's glide.
 #[derive(Debug, Clone, Copy, Default)]
 struct PadTrack {
@@ -731,8 +712,7 @@ pub struct Engine {
     c: Compiled,
     buttons: Vec<Press>,
     sticks: [[Press; 4]; 2],
-    pads: [Vec<Press>; 2],
-    radials: [Radial; 2],
+    pads: [[Press; 4]; 2],
     tracks: [PadTrack; 2],
     calibration: Calibration,
     gyro_toggled: bool,
@@ -747,14 +727,12 @@ const TRACKBALL_FRICTION: f32 = 4.0;
 
 impl Engine {
     pub fn new(layout: Layout) -> Self {
-        let c = Compiled::new(&layout);
         Engine {
-            pads: [vec![Press::default(); c.left_pad.len()], vec![Press::default(); c.right_pad.len()]],
-            c,
+            c: Compiled::new(&layout),
             layout,
             buttons: vec![Press::default(); CONTROLS.len()],
             sticks: Default::default(),
-            radials: Default::default(),
+            pads: Default::default(),
             tracks: Default::default(),
             calibration: Calibration::default(),
             gyro_toggled: false,
@@ -920,33 +898,6 @@ impl Engine {
                     for (i, v) in [y, -y, -x, x].into_iter().enumerate() {
                         apply(&acts[i], on && v > PAD_ZONE, 1.0, &mut self.pads[side][i], now, &mut f);
                     }
-                }
-                PadMode::Radial { click, .. } => {
-                    let r = &mut self.radials[side];
-                    let [x, y] = [pos[0] * 2.0, pos[1] * 2.0];
-                    let n = acts.len();
-                    let was = r.selected;
-                    r.selected = if n > 0 && pad.touched && x.hypot(y) > PAD_ZONE { Some(radial_slice(x, y, n, r.selected)) } else { None };
-                    if r.selected.is_some() && r.selected != was {
-                        f.ticks |= 1 << side;
-                    }
-                    if *click {
-                        // The item under the thumb when the click went down holds until it's let go.
-                        if pad.clicked && !r.clicked {
-                            r.held = r.selected;
-                        } else if !pad.clicked {
-                            r.held = None;
-                        }
-                    } else if let (false, Some(i)) = (pad.touched, was) {
-                        r.tap = Some((i, now + RADIAL_TAP));
-                    }
-                    r.clicked = pad.clicked;
-                    let tap = r.tap.filter(|(_, until)| now < *until).map(|(i, _)| i);
-                    r.tap = r.tap.filter(|(_, until)| now < *until);
-                    for (i, act) in acts.iter().enumerate() {
-                        apply(act, r.held == Some(i) || tap == Some(i), 1.0, &mut self.pads[side][i], now, &mut f);
-                    }
-                    f.radial[side] = r.held.or(tap).or(r.selected).map(|i| i as u8);
                 }
             }
             if pad.touched && *mode != PadMode::None {
@@ -1364,70 +1315,6 @@ mod tests {
         assert!(e.process(&a, ms(4)).runs.is_empty());
         assert!(e.process(&ControllerState::default(), ms(8)).runs.is_empty());
         assert_eq!(e.process(&a, ms(12)).runs, ["notepad.exe"]);
-    }
-
-    #[test]
-    fn radial_slices_go_clockwise_from_the_top_and_hold_at_their_edges() {
-        // Four slices: up, right, down, left.
-        assert_eq!(radial_slice(0.0, 1.0, 4, None), 0);
-        assert_eq!(radial_slice(1.0, 0.0, 4, None), 1);
-        assert_eq!(radial_slice(0.0, -1.0, 4, None), 2);
-        assert_eq!(radial_slice(-1.0, 0.0, 4, None), 3);
-        assert_eq!(radial_slice(-0.1, 1.0, 4, None), 0);
-        // Just past the edge between up and right: stays up, further on it's right.
-        let (s, c) = (48f32.to_radians().sin(), 48f32.to_radians().cos());
-        assert_eq!(radial_slice(s, c, 4, None), 1);
-        assert_eq!(radial_slice(s, c, 4, Some(0)), 0);
-        let (s, c) = (60f32.to_radians().sin(), 60f32.to_radians().cos());
-        assert_eq!(radial_slice(s, c, 4, Some(0)), 1);
-        // From the far side of the circle.
-        assert_eq!(radial_slice(-0.1, 1.0, 4, Some(3)), 0);
-    }
-
-    fn thumb(x: i16, y: i16, clicked: bool) -> ControllerState {
-        ControllerState { left_pad: Trackpad { touched: true, clicked, x, y, ..Default::default() }, ..Default::default() }
-    }
-
-    fn radial(click: bool) -> Engine {
-        let items = vec![Action::key(&["A"]), Action::key(&["B"]), Action::Run { target: "calc".into() }, Action::key(&["D"])];
-        Engine::new(Layout { left_pad: PadMode::Radial { items, click }, ..Layout::default() })
-    }
-
-    #[test]
-    fn radial_plays_the_item_under_the_thumb_on_lift() {
-        let mut e = radial(false);
-        let b = key_id("B").unwrap();
-        // The centre picks nothing, and lifting there plays nothing.
-        assert_eq!(e.process(&thumb(0, 0, false), ms(0)).ticks, 0);
-        assert!(e.process(&ControllerState::default(), ms(4)).keys.is_empty());
-        // Up ticks, right ticks again, holding still doesn't.
-        assert_eq!(e.process(&thumb(0, 30000, false), ms(8)).ticks, 1);
-        let f = e.process(&thumb(30000, 0, false), ms(12));
-        assert_eq!((f.ticks, f.radial[0]), (1, Some(1)));
-        assert!(f.keys.is_empty());
-        assert_eq!(e.process(&thumb(30000, 0, false), ms(16)).ticks, 0);
-        // Lift: B for a moment, then let go.
-        assert!(e.process(&ControllerState::default(), ms(20)).keys.contains(b));
-        assert!(e.process(&ControllerState::default(), ms(40)).keys.contains(b));
-        assert!(e.process(&ControllerState::default(), ms(64)).keys.is_empty());
-        // Down opens the program once.
-        e.process(&thumb(0, -30000, false), ms(70));
-        assert_eq!(e.process(&ControllerState::default(), ms(74)).runs, ["calc"]);
-        assert!(e.process(&ControllerState::default(), ms(78)).runs.is_empty());
-    }
-
-    #[test]
-    fn radial_with_click_holds_the_item_clicked_on() {
-        let mut e = radial(true);
-        let a = key_id("A").unwrap();
-        e.process(&thumb(0, 30000, false), ms(0));
-        assert!(e.process(&thumb(0, 30000, true), ms(4)).keys.contains(a));
-        // Sliding while clicked keeps the item it was clicked on.
-        let f = e.process(&thumb(30000, 0, true), ms(8));
-        assert!(f.keys.contains(a) && f.radial[0] == Some(0));
-        assert!(e.process(&thumb(30000, 0, false), ms(12)).keys.is_empty());
-        // Lifting without a click plays nothing.
-        assert!(e.process(&ControllerState::default(), ms(16)).keys.is_empty());
     }
 
     #[test]

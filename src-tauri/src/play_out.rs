@@ -5,23 +5,25 @@
 //! There are two modes, Desktop and Game, and up to three layouts: Keyboard & mouse has one for
 //! each mode, the Gamepad one. With both outputs on, the desktop gets keyboard and mouse and games
 //! get the gamepad ([`active_slot`]). A Switch action (the Steam button in every built-in) flips
-//! the mode; with auto switch on, a full-screen app means Game. Keyboard & mouse can also have a
-//! layout per program, which plays instead of the mode's while that program is in front.
+//! the mode; with auto switch on, a full-screen app means Game.
+//!
+//! The Command Deck (`deck.rs`) runs next to whichever layout plays, on the controls it takes
+//! from it, with a page of its own per program while that program is in front.
 //!
 //! The virtual pad is opened on a thread of its own (plugging one in takes a moment), and so is
 //! the driver check and install; `tick` picks up the results.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use sc_core::protocol::Haptic;
 use sc_core::ControllerState;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
+use crate::deck::{Deck, DeckEngine, Menu, MenuView, Part};
 use crate::devices::{self, Foreground, KeyMouse, PadSupport, VirtualPad};
 use crate::layout::{builtin_gamepad, builtin_keymouse, Engine, Event, Frame, Injector, Layout, PadState, KEYS};
 
@@ -34,9 +36,9 @@ const RETRY: Duration = Duration::from_secs(5);
 const PRESET_EXT: &str = "json";
 /// The haptic click played on every mode switch.
 const SWITCH_CLICK: Haptic = Haptic::Command { side: 2, command: 2, gain_db: 0 };
-/// The tick a radial menu plays on its trackpad's side when the thumb moves to another item.
-const RADIAL_TICK: u8 = 1;
-/// How many programs seen in front the Keyboard & mouse tab offers for a per-program layout.
+/// The tick a Command Deck menu plays on its side when the thumb moves to another item.
+const MENU_TICK: u8 = 1;
+/// How many programs seen in front the Command Deck tab offers for a page of their own.
 const RECENT_APPS: usize = 8;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,8 +49,9 @@ pub enum Mode {
     Game,
 }
 
-/// One of the layouts. In JSON a string: `desktop`, `game`, `pad`, `app:<index>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One of the three layouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Slot {
     /// Keyboard & mouse, Desktop mode.
     Desktop,
@@ -56,37 +59,6 @@ pub enum Slot {
     Game,
     /// The Gamepad tab's layout.
     Pad,
-    /// Keyboard & mouse, the layout of `KeyMouseConfig::apps[i]`.
-    App(usize),
-}
-
-impl FromStr for Slot {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "desktop" => Ok(Slot::Desktop),
-            "game" => Ok(Slot::Game),
-            "pad" => Ok(Slot::Pad),
-            _ => s.strip_prefix("app:").and_then(|i| i.parse().ok()).map(Slot::App).ok_or_else(|| format!("No layout \"{s}\"")),
-        }
-    }
-}
-
-impl Serialize for Slot {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Slot::Desktop => s.serialize_str("desktop"),
-            Slot::Game => s.serialize_str("game"),
-            Slot::Pad => s.serialize_str("pad"),
-            Slot::App(i) => s.serialize_str(&format!("app:{i}")),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Slot {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        String::deserialize(d)?.parse().map_err(serde::de::Error::custom)
-    }
 }
 
 /// Which layout plays in `mode` with the outputs that are on: in Desktop the keyboard & mouse
@@ -130,16 +102,16 @@ fn builtin(kind: PresetKind, name: &str) -> Layout {
     list.iter().find(|l| l.name == name).or(list.first()).cloned().unwrap_or_default()
 }
 
-/// A Keyboard & mouse layout that plays while one program is in front, whatever the mode.
+/// A Command Deck page that plays while one program is in front.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct AppLayout {
+pub struct AppDeck {
     /// The program's file name (`Photoshop.exe`); any case, `.exe` optional.
     pub app: String,
-    pub layout: Layout,
+    pub deck: Deck,
 }
 
-impl AppLayout {
+impl AppDeck {
     pub fn matches(&self, app: &str) -> bool {
         let bare = |s: &str| {
             let s = s.trim().to_lowercase();
@@ -156,8 +128,6 @@ pub struct KeyMouseConfig {
     pub enabled: bool,
     pub desktop: Layout,
     pub game: Layout,
-    /// Per-program layouts; the first that matches the program in front plays.
-    pub apps: Vec<AppLayout>,
 }
 
 impl Default for KeyMouseConfig {
@@ -166,7 +136,6 @@ impl Default for KeyMouseConfig {
             enabled: false,
             desktop: builtin(PresetKind::Keymouse, "Desktop"),
             game: builtin(PresetKind::Keymouse, "Shooter (WASD + mouse)"),
-            apps: Vec::new(),
         }
     }
 }
@@ -184,6 +153,35 @@ impl Default for GamepadConfig {
     }
 }
 
+/// The Command Deck tab's settings and pages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DeckConfig {
+    pub enabled: bool,
+    /// Show a menu on screen while its stick or trackpad is touched.
+    pub overlay: bool,
+    /// The page for every program without one of its own.
+    pub deck: Deck,
+    /// Pages per program; the first that matches the program in front plays.
+    pub apps: Vec<AppDeck>,
+}
+
+impl Default for DeckConfig {
+    fn default() -> Self {
+        DeckConfig { enabled: false, overlay: true, deck: Deck::default(), apps: Vec::new() }
+    }
+}
+
+impl DeckConfig {
+    /// A page: None the default one, else `apps[i]`'s (None if it no longer exists).
+    fn page(&self, page: Option<usize>) -> Option<&Deck> {
+        match page {
+            None => Some(&self.deck),
+            Some(i) => self.apps.get(i).map(|a| &a.deck),
+        }
+    }
+}
+
 /// Saved between runs in `config.json`; also what the tabs start from (`play_setup`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -192,22 +190,21 @@ pub struct Config {
     pub gamepad: GamepadConfig,
     /// A full-screen app switches to Game, anything else back to Desktop.
     pub auto_switch: bool,
+    pub deck: DeckConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { keymouse: KeyMouseConfig::default(), gamepad: GamepadConfig::default(), auto_switch: true }
+        Config { keymouse: KeyMouseConfig::default(), gamepad: GamepadConfig::default(), auto_switch: true, deck: DeckConfig::default() }
     }
 }
 
 impl Config {
-    /// None for a per-program layout that no longer exists.
-    fn layout(&self, slot: Slot) -> Option<&Layout> {
+    fn layout(&self, slot: Slot) -> &Layout {
         match slot {
-            Slot::Desktop => Some(&self.keymouse.desktop),
-            Slot::Game => Some(&self.keymouse.game),
-            Slot::Pad => Some(&self.gamepad.layout),
-            Slot::App(i) => self.keymouse.apps.get(i).map(|a| &a.layout),
+            Slot::Desktop => &self.keymouse.desktop,
+            Slot::Game => &self.keymouse.game,
+            Slot::Pad => &self.gamepad.layout,
         }
     }
 }
@@ -218,10 +215,6 @@ pub struct KeyMouseStatus {
     pub supported: bool,
     /// The system refused the input (a secure screen in front, or no access to /dev/uinput).
     pub error: Option<String>,
-    /// The last program, file or URL that couldn't be opened, and why.
-    pub run_error: Option<String>,
-    /// Per-program layouts work here (the program in front can be told).
-    pub apps_supported: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -257,8 +250,45 @@ pub struct Preview {
     pub gyro_active: bool,
     /// Bit per control in use (`layout::CONTROLS`, then `LIT_*`).
     pub lit: u64,
-    /// Each trackpad's radial menu item under the thumb or playing.
-    pub radial: [Option<u8>; 2],
+}
+
+/// The Command Deck tab's live view: the page it shows, as the controller uses it now.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DeckPreview {
+    /// The page shown (None: the default page); `shown` false while the tab isn't in view.
+    pub page: Option<usize>,
+    pub shown: bool,
+    /// Bit per control in use (`layout::CONTROLS`, then the sticks and pads).
+    pub lit: u64,
+    /// The left stick, right stick, left pad and right pad's menus.
+    pub menus: [MenuView; 4],
+}
+
+/// `Snapshot.play.deck`, mirrored in `controller.ts`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DeckStatus {
+    pub enabled: bool,
+    pub overlay: bool,
+    /// Keyboard and mouse input can be sent here.
+    pub supported: bool,
+    /// Pages per program work here (the program in front can be told).
+    pub apps_supported: bool,
+    /// The page playing (None: the default page) and its program.
+    pub page: Option<usize>,
+    pub app: Option<String>,
+    /// Programs seen in front lately, most recent first, to make pages for.
+    pub recent_apps: Vec<String>,
+    /// The last program, file or URL that couldn't be opened, and why.
+    pub run_error: Option<String>,
+    pub preview: DeckPreview,
+}
+
+/// What the on-screen menu shows (`overlay.rs`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OverlayMenu {
+    pub part: Part,
+    pub menu: Menu,
+    pub selected: Option<u8>,
 }
 
 /// What both tabs, the tray and the sidebar show; `Snapshot.play`, mirrored in `controller.ts`.
@@ -268,15 +298,12 @@ pub struct PlayStatus {
     pub auto_switch: bool,
     /// The full-screen app auto switch sees, by file name.
     pub fullscreen_app: Option<String>,
-    /// The program in front whose own layout plays, by file name.
-    pub app: Option<String>,
-    /// Programs seen in front lately, most recent first, to make per-program layouts for.
-    pub recent_apps: Vec<String>,
     /// The layout in play, if any.
     pub active: Option<Slot>,
     pub keymouse: KeyMouseStatus,
     pub gamepad: GamepadStatus,
     pub preview: Preview,
+    pub deck: DeckStatus,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -387,7 +414,6 @@ pub(crate) fn preview(slot: Option<Slot>, f: Option<&Frame>, speed: &Speed) -> P
             scroll: speed.scroll,
             gyro_active: f.gyro_active,
             lit: f.lit,
-            radial: f.radial,
         },
         None => Preview { slot, ..Default::default() },
     }
@@ -425,10 +451,19 @@ pub struct PlayOut {
     /// The full-screen window auto switch last saw: a manual switch holds until it changes.
     fullscreen: Option<(isize, String)>,
     foreground_checked: Option<Instant>,
-    /// The program in front, by file name, and its layout (`KeyMouseConfig::apps` index).
+    /// The program in front, by file name, and its Command Deck page (`DeckConfig::apps` index).
     front: Option<String>,
     app: Option<usize>,
     recent_apps: Vec<String>,
+    deck: DeckEngine,
+    /// The page `deck` runs.
+    deck_page: Option<usize>,
+    /// The page the Command Deck tab shows, while it does, and an engine for its live view when
+    /// it isn't the one playing.
+    deck_preview: Option<Option<usize>>,
+    deck_preview_engine: Option<(Option<usize>, DeckEngine)>,
+    /// What the on-screen menu last showed: (wanted, menus' version, page).
+    overlay_key: Option<(bool, u64, Option<usize>)>,
     /// Results of opening programs, files and URLs (Run actions), each on a thread of its own.
     run_results: (mpsc::Sender<Result<(), String>>, mpsc::Receiver<Result<(), String>>),
     run_error: Option<String>,
@@ -484,6 +519,11 @@ impl PlayOut {
             front: None,
             app: None,
             recent_apps: Vec::new(),
+            deck: DeckEngine::new(Deck::default()),
+            deck_page: None,
+            deck_preview: None,
+            deck_preview_engine: None,
+            overlay_key: None,
             run_results: mpsc::channel(),
             run_error: None,
             haptics: Vec::new(),
@@ -493,6 +533,7 @@ impl PlayOut {
         };
         out.check_driver();
         out.apply_active();
+        out.apply_deck();
         out
     }
 
@@ -515,24 +556,21 @@ impl PlayOut {
     }
 
     fn active(&self) -> Option<Slot> {
-        match active_slot(self.mode, self.config.keymouse.enabled, self.config.gamepad.enabled) {
-            Some(Slot::Desktop | Slot::Game) if self.app.is_some_and(|i| i < self.config.keymouse.apps.len()) => self.app.map(Slot::App),
-            slot => slot,
-        }
+        active_slot(self.mode, self.config.keymouse.enabled, self.config.gamepad.enabled)
     }
 
     /// After a change of mode or config: put the layout that should play in the engine, letting
     /// go of what the old one held.
     fn apply_active(&mut self) {
         let want = self.active();
-        let same = want == self.applied && want.is_none_or(|s| self.config.layout(s) == Some(self.engine.layout()));
+        let same = want == self.applied && want.is_none_or(|s| self.engine.layout() == self.config.layout(s));
         if same {
             return;
         }
         self.release_input();
         self.applied = want;
-        self.engine.set_layout(want.and_then(|s| self.config.layout(s)).cloned().unwrap_or_default());
-        if want.is_none() {
+        self.engine.set_layout(want.map(|s| self.config.layout(s).clone()).unwrap_or_default());
+        if want.is_none() && !self.config.deck.enabled {
             // Nothing to send: let the keyboard and mouse device go (on Linux it's a device).
             self.keymouse = None;
             self.keymouse_error = None;
@@ -568,12 +606,43 @@ impl PlayOut {
         }
     }
 
+    /// After a change of the deck's config or the program in front: run the page that should
+    /// play, letting go of what the old one held.
+    fn apply_deck(&mut self) {
+        let page = if self.config.deck.enabled { self.app } else { None };
+        let deck = self.config.deck.page(page).cloned().unwrap_or_default();
+        if page == self.deck_page && *self.deck.deck() == deck {
+            return;
+        }
+        self.release_input();
+        self.deck_page = page;
+        self.deck = DeckEngine::new(deck);
+        if !self.config.deck.enabled && self.applied.is_none() {
+            self.keymouse = None;
+            self.keymouse_error = None;
+        }
+    }
+
     pub fn set_keymouse(&mut self, cfg: KeyMouseConfig) {
         self.config.keymouse = cfg;
         self.save_config();
-        // The programs may have changed: match the one in front again.
-        self.app = self.app_layout();
         self.apply_active();
+    }
+
+    /// The Command Deck's on/off, on-screen menu and pages (the tab sends them after every edit).
+    pub fn set_deck(&mut self, cfg: DeckConfig) {
+        self.config.deck = cfg;
+        self.save_config();
+        // The pages may have changed: match the program in front again.
+        self.app = self.app_page();
+        self.apply_deck();
+        self.apply_active();
+    }
+
+    /// Which page the Command Deck tab shows, while it is open (None: closed).
+    pub fn set_deck_preview(&mut self, page: Option<Option<usize>>) {
+        self.deck_preview = page;
+        self.deck_preview_engine = None;
     }
 
     pub fn set_gamepad(&mut self, cfg: GamepadConfig) {
@@ -616,21 +685,38 @@ impl PlayOut {
     /// Feed one state report from whatever the UI is showing (live input or a replay).
     /// `watched`: the Keyboard & mouse or Gamepad tab is in view, so its layout runs for the
     /// live view even when it isn't the one in play.
-    pub fn process(&mut self, s: &ControllerState, watched: bool) {
+    /// `watched`: the Keyboard & mouse or Gamepad tab, and the Command Deck tab, are in view.
+    pub fn process(&mut self, s: &ControllerState, watched: bool, deck_watched: bool) {
         let now = self.start.elapsed();
+        let deck_on = self.config.deck.enabled;
+        // The layout gets the controller without the controls the deck takes.
+        let masked;
+        let layout_state = if deck_on {
+            self.deck.process(s, now);
+            masked = self.deck.mask(s);
+            &masked
+        } else {
+            s
+        };
         if self.applied.is_some() {
-            let frame = self.engine.process(s, now);
+            self.engine.process(layout_state, now);
+        }
+        if self.applied.is_some() || deck_on {
+            let mut frame = if self.applied.is_some() { self.engine.frame().clone() } else { Frame::default() };
+            if deck_on {
+                frame.merge(self.deck.frame());
+            }
             // The other mode's engine starts fresh and would take the still-held button for a new
             // press, flipping back on every report: wait for the button to be let go.
             let switch = frame.switch && !self.switch_held;
             self.switch_held = frame.switch_held && (switch || self.switch_held);
-            let events = self.injector.apply(frame).to_vec();
+            let events = self.injector.apply(&frame).to_vec();
             for side in 0..2 {
                 if frame.ticks & (1 << side) != 0 {
-                    self.haptics.push(Haptic::Command { side, command: RADIAL_TICK, gain_db: 0 });
+                    self.haptics.push(Haptic::Command { side, command: MENU_TICK, gain_db: 0 });
                 }
             }
-            for target in frame.runs.clone() {
+            for target in frame.runs {
                 let done = self.run_results.0.clone();
                 thread::spawn(move || {
                     let result = tauri_plugin_opener::open_url(&target, None::<&str>).map_err(|e| format!("Couldn't open {target}: {e}"));
@@ -669,8 +755,8 @@ impl PlayOut {
             }
         }
         match self.preview_slot {
-            Some(slot) if watched && self.applied != Some(slot) && self.config.layout(slot).is_some() => {
-                let layout = self.config.layout(slot).unwrap();
+            Some(slot) if watched && self.applied != Some(slot) => {
+                let layout = self.config.layout(slot);
                 if self.preview_engine.as_ref().is_none_or(|(s, e)| *s != slot || e.layout() != layout) {
                     self.preview_engine = Some((slot, Engine::new(layout.clone())));
                 }
@@ -679,6 +765,17 @@ impl PlayOut {
             }
             _ => self.preview_engine = None,
         }
+        // The Command Deck tab's page, when it isn't the one playing.
+        match self.deck_preview {
+            Some(page) if deck_watched && !(deck_on && page == self.deck_page) && self.config.deck.page(page).is_some() => {
+                let deck = self.config.deck.page(page).unwrap();
+                if self.deck_preview_engine.as_ref().is_none_or(|(p, e)| *p != page || e.deck() != deck) {
+                    self.deck_preview_engine = Some((page, DeckEngine::new(deck.clone())));
+                }
+                self.deck_preview_engine.as_mut().unwrap().1.process(s, now);
+            }
+            _ => self.deck_preview_engine = None,
+        }
     }
 
     /// Let go of everything held, e.g. when switching between live input and a replay or losing
@@ -686,7 +783,9 @@ impl PlayOut {
     pub fn release_all(&mut self) {
         self.release_input();
         self.engine.reset();
+        self.deck.reset();
         self.preview_engine = None;
+        self.deck_preview_engine = None;
         self.speed = Speed::default();
     }
 
@@ -793,9 +892,8 @@ impl PlayOut {
         while let Ok(result) = self.run_results.1.try_recv() {
             self.run_error = result.err();
         }
-        // Also while the Keyboard & mouse tab is in view, for the programs it offers.
-        let watching = matches!(self.preview_slot, Some(Slot::Desktop | Slot::Game | Slot::App(_)));
-        if self.config.keymouse.enabled || watching {
+        // Also while the Command Deck tab is open, for the programs it offers.
+        if self.config.keymouse.enabled || self.config.deck.enabled || self.deck_preview.is_some() {
             if self.foreground_checked.is_none_or(|t| t.elapsed() >= FOREGROUND_POLL) {
                 self.foreground_checked = Some(Instant::now());
                 self.foreground(devices::foreground());
@@ -827,20 +925,41 @@ impl PlayOut {
             self.fullscreen = None;
         }
         self.front = seen.map(|f| f.app);
-        self.set_app(self.app_layout());
+        self.set_app(self.app_page());
     }
 
-    /// The per-program layout for the program in front.
-    fn app_layout(&self) -> Option<usize> {
+    /// The Command Deck page of the program in front.
+    fn app_page(&self) -> Option<usize> {
         let front = self.front.as_deref()?;
-        self.config.keymouse.apps.iter().position(|a| a.matches(front))
+        self.config.deck.apps.iter().position(|a| a.matches(front))
     }
 
     fn set_app(&mut self, app: Option<usize>) {
         if app != self.app {
             self.app = app;
-            self.apply_active();
+            self.apply_deck();
         }
+    }
+
+    /// The on-screen menu should exist (it is made ahead, hidden, to show without a delay).
+    pub fn overlay_wanted(&self) -> bool {
+        let d = &self.config.deck;
+        d.enabled && d.overlay && devices::KEYMOUSE_SUPPORTED && d.page(self.deck_page).is_some_and(|p| p.menus().iter().any(|m| **m != Menu::None))
+    }
+
+    /// The on-screen menu, when it changed since the last call: Some(None) hides it.
+    pub fn take_overlay(&mut self) -> Option<Option<OverlayMenu>> {
+        let wanted = self.overlay_wanted();
+        let key = (wanted, self.deck.version(), self.deck_page);
+        if self.overlay_key == Some(key) {
+            return None;
+        }
+        self.overlay_key = Some(key);
+        let part = self.deck.focus().filter(|_| wanted);
+        Some(part.map(|part| {
+            let i = crate::deck::PARTS.iter().position(|p| *p == part).unwrap();
+            OverlayMenu { part, menu: self.deck.deck().menus()[i].clone(), selected: self.deck.menus()[i].selected }
+        }))
     }
 
     /// Haptics to play on the controller: the mode switch click.
@@ -864,18 +983,11 @@ impl PlayOut {
             mode: self.mode,
             auto_switch: self.config.auto_switch,
             fullscreen_app: self.fullscreen.as_ref().map(|f| f.1.clone()),
-            app: match self.applied {
-                Some(Slot::App(i)) => self.config.keymouse.apps.get(i).map(|a| a.app.clone()),
-                _ => None,
-            },
-            recent_apps: self.recent_apps.clone(),
             active: self.applied,
             keymouse: KeyMouseStatus {
                 enabled: self.config.keymouse.enabled,
                 supported: devices::KEYMOUSE_SUPPORTED,
                 error: self.keymouse_error.clone(),
-                run_error: self.run_error.clone(),
-                apps_supported: devices::FOREGROUND_SUPPORTED,
             },
             gamepad: GamepadStatus {
                 enabled: self.config.gamepad.enabled,
@@ -889,6 +1001,33 @@ impl PlayOut {
                 rumble: self.rumble,
             },
             preview,
+            deck: self.deck_status(),
+        }
+    }
+
+    fn deck_status(&self) -> DeckStatus {
+        let d = &self.config.deck;
+        let page = self.deck_preview.flatten();
+        let engine = match (&self.deck_preview_engine, self.deck_preview) {
+            (Some((_, e)), _) => Some(e),
+            (None, Some(p)) if d.enabled && p == self.deck_page => Some(&self.deck),
+            _ => None,
+        };
+        DeckStatus {
+            enabled: d.enabled,
+            overlay: d.overlay,
+            supported: devices::KEYMOUSE_SUPPORTED,
+            apps_supported: devices::FOREGROUND_SUPPORTED,
+            page: self.deck_page,
+            app: self.deck_page.and_then(|i| d.apps.get(i)).map(|a| a.app.clone()),
+            recent_apps: self.recent_apps.clone(),
+            run_error: self.run_error.clone(),
+            preview: DeckPreview {
+                page,
+                shown: self.deck_preview.is_some(),
+                lit: engine.map_or(0, |e| e.frame().lit),
+                menus: engine.map_or_else(Default::default, |e| e.menus()),
+            },
         }
     }
 }
@@ -906,6 +1045,7 @@ fn install(_dir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::Action;
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sc-play-{name}-{}", std::process::id()));
@@ -917,60 +1057,78 @@ mod tests {
         Foreground { id, app: app.into(), fullscreen: true }
     }
 
-    #[test]
-    fn slots_are_strings_in_json() {
-        for (slot, json) in [(Slot::Desktop, "\"desktop\""), (Slot::Pad, "\"pad\""), (Slot::App(3), "\"app:3\"")] {
-            assert_eq!(serde_json::to_string(&slot).unwrap(), json);
-            assert_eq!(serde_json::from_str::<Slot>(json).unwrap(), slot);
-        }
-        assert!(serde_json::from_str::<Slot>("\"app:x\"").is_err());
+    fn deck_with_wheel() -> Deck {
+        use crate::deck::{Item, Pick};
+        let items = vec![Item { label: "Up".into(), action: Action::key(&["F1"]) }, Item { label: "Down".into(), action: Action::key(&["F2"]) }];
+        Deck { right_stick: Menu::Wheel { items, pick: Pick::Release }, ..Deck::default() }
+    }
+
+    fn stick(y: i16) -> ControllerState {
+        ControllerState { right_stick: [0, y], buttons: sc_core::protocol::buttons::RIGHT_STICK_TOUCH, ..Default::default() }
     }
 
     #[test]
-    fn a_program_with_its_own_layout_gets_it() {
+    fn a_program_with_its_own_page_gets_it() {
         let dir = temp_dir("apps");
         let mut play = PlayOut::new(dir.clone());
-        let photo = AppLayout { app: "Photoshop".into(), layout: Layout { name: "Photo".into(), ..Layout::default() } };
+        let photo = AppDeck { app: "Photoshop".into(), deck: deck_with_wheel() };
         assert!(photo.matches("photoshop.EXE") && !photo.matches("photoshop2.exe"));
-        assert!(!AppLayout::default().matches(""));
-        play.set_keymouse(KeyMouseConfig { enabled: true, apps: vec![photo], ..Default::default() });
+        assert!(!AppDeck::default().matches(""));
+        play.set_deck(DeckConfig { enabled: true, apps: vec![photo], ..Default::default() });
+        assert_eq!(play.status().deck.page, None);
         play.foreground(Some(Foreground { fullscreen: false, ..full(1, "Photoshop.exe") }));
-        assert_eq!(play.status().active, Some(Slot::App(0)));
-        assert_eq!(play.status().app.as_deref(), Some("Photoshop"));
-        // Whatever the mode.
-        play.set_mode(Mode::Game);
-        assert_eq!(play.status().active, Some(Slot::App(0)));
-        // Except when the gamepad has games.
-        play.set_gamepad(GamepadConfig { enabled: true, ..Default::default() });
-        assert_eq!(play.status().active, Some(Slot::Pad));
-        play.set_mode(Mode::Desktop);
-        assert_eq!(play.status().active, Some(Slot::App(0)));
+        assert_eq!((play.status().deck.page, play.status().deck.app.as_deref()), (Some(0), Some("Photoshop")));
         // Removed and added again while it's in front.
-        let apps = play.config().keymouse.apps.clone();
-        play.set_keymouse(KeyMouseConfig { apps: Vec::new(), ..play.config().keymouse.clone() });
-        assert_eq!(play.status().active, Some(Slot::Desktop));
-        play.set_keymouse(KeyMouseConfig { apps, ..play.config().keymouse.clone() });
-        assert_eq!(play.status().active, Some(Slot::App(0)));
+        let apps = play.config().deck.apps.clone();
+        play.set_deck(DeckConfig { apps: Vec::new(), ..play.config().deck.clone() });
+        assert_eq!(play.status().deck.page, None);
+        play.set_deck(DeckConfig { apps, ..play.config().deck.clone() });
+        assert_eq!(play.status().deck.page, Some(0));
         play.foreground(Some(Foreground { fullscreen: false, ..full(2, "explorer.exe") }));
-        assert_eq!(play.status().active, Some(Slot::Desktop));
-        assert_eq!(play.status().app, None);
+        assert_eq!(play.status().deck.page, None);
+        // Off: no page plays.
+        play.foreground(Some(Foreground { fullscreen: false, ..full(1, "Photoshop.exe") }));
+        play.set_deck(DeckConfig { enabled: false, ..play.config().deck.clone() });
+        assert_eq!(play.status().deck.page, None);
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn radial_ticks_reach_the_controller() {
-        use crate::layout::{Action, PadMode};
-        use sc_core::protocol::Trackpad;
-        let dir = temp_dir("radial");
+    fn the_deck_ticks_and_takes_its_stick_from_the_layout() {
+        let dir = temp_dir("deck");
         let mut play = PlayOut::new(dir.clone());
-        let mut layout = Layout::default();
-        layout.right_pad = PadMode::Radial { items: vec![Action::key(&["A"]), Action::key(&["B"])], click: true };
-        play.set_keymouse(KeyMouseConfig { enabled: true, desktop: layout, ..Default::default() });
-        let thumb = |y: i16| ControllerState { right_pad: Trackpad { touched: true, x: 0, y, ..Default::default() }, ..Default::default() };
-        play.process(&thumb(30000), false);
-        play.process(&thumb(30000), false);
-        play.process(&thumb(-30000), false);
-        assert_eq!(play.take_haptics(), vec![Haptic::Command { side: 1, command: RADIAL_TICK, gain_db: 0 }; 2]);
+        // The Desktop layout moves the pointer with the right stick; the deck takes it.
+        play.set_keymouse(KeyMouseConfig { enabled: true, ..Default::default() });
+        play.set_deck(DeckConfig { enabled: true, deck: deck_with_wheel(), ..Default::default() });
+        play.set_preview(Some(Slot::Desktop));
+        for _ in 0..3 {
+            play.process(&stick(30000), true, false);
+        }
+        play.process(&stick(-30000), true, false);
+        assert_eq!(play.take_haptics(), vec![Haptic::Command { side: 1, command: MENU_TICK, gain_db: 0 }; 2]);
+        assert_eq!(play.status().preview.mouse, [0.0, 0.0]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_overlay_follows_the_menu_touched() {
+        let dir = temp_dir("overlay");
+        let mut play = PlayOut::new(dir.clone());
+        // Off: nothing to show, said once.
+        assert_eq!(play.take_overlay(), Some(None));
+        assert_eq!(play.take_overlay(), None);
+        play.set_deck(DeckConfig { enabled: true, deck: deck_with_wheel(), ..Default::default() });
+        assert!(play.overlay_wanted());
+        play.process(&stick(30000), false, false);
+        let shown = play.take_overlay().unwrap().unwrap();
+        assert_eq!((shown.part, shown.selected), (Part::RightStick, Some(0)));
+        play.process(&stick(30000), false, false);
+        assert_eq!(play.take_overlay(), None);
+        play.process(&ControllerState::default(), false, false);
+        assert_eq!(play.take_overlay(), Some(None));
+        // Without the on-screen menu.
+        play.set_deck(DeckConfig { overlay: false, ..play.config().deck.clone() });
+        assert!(!play.overlay_wanted());
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1016,12 +1174,12 @@ mod tests {
         let steam = ControllerState { buttons: sc_core::protocol::buttons::STEAM, ..Default::default() };
         let idle = ControllerState::default();
         for _ in 0..10 {
-            play.process(&steam, false);
+            play.process(&steam, false, false);
         }
         assert_eq!(play.mode(), Mode::Game);
         assert_eq!(play.take_haptics().len(), 1);
-        play.process(&idle, false);
-        play.process(&steam, false);
+        play.process(&idle, false, false);
+        play.process(&steam, false, false);
         assert_eq!(play.mode(), Mode::Desktop);
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1049,7 +1207,7 @@ mod tests {
         // Another one goes full screen: Game.
         play.foreground(Some(full(9, "other.exe")));
         assert_eq!(play.mode(), Mode::Game);
-        assert_eq!(play.status().recent_apps, ["other.exe", "notepad.exe", "game.exe"]);
+        assert_eq!(play.status().deck.recent_apps, ["other.exe", "notepad.exe", "game.exe"]);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1059,9 +1217,9 @@ mod tests {
         let mut play = PlayOut::new(dir.clone());
         play.set_preview(Some(Slot::Pad));
         let s = ControllerState { buttons: crate::shaping::button_mask("A").unwrap(), ..Default::default() };
-        play.process(&s, false);
+        play.process(&s, false, false);
         assert_eq!(play.status().preview.pad.buttons, 0);
-        play.process(&s, true);
+        play.process(&s, true, false);
         assert_eq!(play.status().preview.pad.buttons, crate::layout::xbutton::A);
         let _ = fs::remove_dir_all(&dir);
     }
