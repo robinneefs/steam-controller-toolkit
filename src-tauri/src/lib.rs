@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
 
 mod deck;
+mod macros;
 mod devices;
 #[cfg(windows)]
 mod inject_win;
@@ -409,6 +410,48 @@ async fn play_reveal_presets(kind: PresetKind, app: AppHandle, play: State<'_, S
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn macro_list(play: State<'_, SharedPlay>) -> Vec<String> {
+    let mut play = play.lock().unwrap();
+    play.macros().reload();
+    play.macros().list()
+}
+
+#[tauri::command]
+fn macro_load(name: String, play: State<'_, SharedPlay>) -> Result<macros::Macro, String> {
+    play.lock().unwrap().macros().get(&name).cloned().ok_or_else(|| format!("There is no macro \"{name}\""))
+}
+
+/// Save a macro (the Macros tab sends it after every edit).
+#[tauri::command]
+fn macro_save(name: String, content: macros::Macro, play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().save_macro(&name, content)
+}
+
+#[tauri::command]
+fn macro_delete(name: String, play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().macros().delete(&name)
+}
+
+/// Rename a macro, and the Command Deck's actions that play it.
+#[tauri::command]
+fn macro_rename(from: String, to: String, play: State<'_, SharedPlay>) -> Result<(), String> {
+    play.lock().unwrap().rename_macro(&from, &to)
+}
+
+/// Play a macro after `delay_ms`, or stop it if it is playing.
+#[tauri::command]
+fn macro_play(name: String, delay_ms: u64, play: State<'_, SharedPlay>) {
+    play.lock().unwrap().play_macro(&name, Duration::from_millis(delay_ms));
+}
+
+/// Open the macros folder in the file manager.
+#[tauri::command]
+async fn macro_reveal(app: AppHandle, play: State<'_, SharedPlay>) -> Result<(), String> {
+    let dir = play.lock().unwrap().macros().folder()?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Run the ViGEmBus installer (Windows asks for administrator permission); the snapshot says
 /// when it is done.
 #[tauri::command]
@@ -652,6 +695,13 @@ pub fn run() {
             deck_setup,
             deck_set,
             deck_set_preview,
+            macro_list,
+            macro_load,
+            macro_save,
+            macro_delete,
+            macro_rename,
+            macro_play,
+            macro_reveal,
             play_list_presets,
             play_load_preset,
             play_save_preset,

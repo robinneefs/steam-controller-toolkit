@@ -220,7 +220,20 @@ export type Action =
   | { kind: "pad"; input: PadInput }
   | { kind: "switch" }
   /** Open a program, file, folder or URL, once per press. */
-  | { kind: "run"; target: string };
+  | { kind: "run"; target: string }
+  /** Play a macro by name; a second press while it plays stops it. */
+  | { kind: "macro"; name: string };
+
+/** Mirrors `Step` and `Macro` in src-tauri/src/macros.rs (times in ms). */
+export interface MacroStep {
+  action: Action;
+  hold: number;
+  wait: number;
+}
+
+export interface Macro {
+  steps: MacroStep[];
+}
 
 export interface Directions {
   up: Action;
@@ -433,6 +446,8 @@ export interface PlayStatus {
     lit: number;
   };
   deck: DeckStatus;
+  /** The macros playing, by name. */
+  macros: string[];
 }
 
 /** Mirrors `TapeStatus` in src-tauri/src/tape.rs. */

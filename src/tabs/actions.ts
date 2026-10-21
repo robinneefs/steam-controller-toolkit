@@ -36,6 +36,8 @@ export function actionLabel(a: Action | undefined): string {
       const t = (a as Extract<Action, { kind: "run" }>).target.replace(/[\\/]+$/, "");
       return `Open ${/^[a-z][\w+.-]*:\/\//i.test(t) ? t.replace(/^[a-z][\w+.-]*:\/\//i, "") : t.split(/[\\/]/).pop()}`;
     }
+    case "macro":
+      return `▶ ${(a as Extract<Action, { kind: "macro" }>).name}`;
     default:
       return "–";
   }

@@ -25,7 +25,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::deck::{Deck, DeckEngine, Menu, MenuView, Part};
 use crate::devices::{self, Foreground, KeyMouse, PadSupport, VirtualPad};
-use crate::layout::{builtin_gamepad, builtin_keymouse, Engine, Event, Frame, Injector, Layout, PadState, KEYS};
+use crate::layout::{builtin_gamepad, builtin_keymouse, Action, Engine, Event, Frame, Injector, Layout, PadState, KEYS};
+use crate::macros::{Macro, MacroStore, Player};
 
 /// How often to look at the foreground window for auto switch and per-program layouts.
 const FOREGROUND_POLL: Duration = Duration::from_millis(500);
@@ -40,6 +41,8 @@ const SWITCH_CLICK: Haptic = Haptic::Command { side: 2, command: 2, gain_db: 0 }
 const MENU_TICK: u8 = 1;
 /// How many programs seen in front the Command Deck tab offers for a page of their own.
 const RECENT_APPS: usize = 8;
+/// Without state reports for this long (no controller), `tick` plays the macros instead.
+const MACROS_ALONE: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -173,6 +176,18 @@ impl Default for DeckConfig {
 }
 
 impl DeckConfig {
+    /// Every action on every page, to change.
+    fn actions_mut(&mut self) -> impl Iterator<Item = &mut Action> {
+        std::iter::once(&mut self.deck).chain(self.apps.iter_mut().map(|a| &mut a.deck)).flat_map(|d| {
+            let Deck { buttons, left_stick, right_stick, left_pad, right_pad } = d;
+            let menus = [left_stick, right_stick, left_pad, right_pad].into_iter().flat_map(|m| match m {
+                Menu::None => [].iter_mut(),
+                Menu::Wheel { items, .. } | Menu::Grid { items, .. } => items.iter_mut(),
+            });
+            buttons.values_mut().chain(menus.map(|i| &mut i.action))
+        })
+    }
+
     /// A page: None the default one, else `apps[i]`'s (None if it no longer exists).
     fn page(&self, page: Option<usize>) -> Option<&Deck> {
         match page {
@@ -304,6 +319,8 @@ pub struct PlayStatus {
     pub gamepad: GamepadStatus,
     pub preview: Preview,
     pub deck: DeckStatus,
+    /// The macros playing, by name.
+    pub macros: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -467,6 +484,10 @@ pub struct PlayOut {
     /// Results of opening programs, files and URLs (Run actions), each on a thread of its own.
     run_results: (mpsc::Sender<Result<(), String>>, mpsc::Receiver<Result<(), String>>),
     run_error: Option<String>,
+    macros: MacroStore,
+    macro_player: Player,
+    /// When the last state report came, for `tick` to play macros without a controller.
+    last_report: Option<Instant>,
     /// Haptics for the controller, for `forward_events` to send.
     haptics: Vec<Haptic>,
     start: Instant,
@@ -526,6 +547,9 @@ impl PlayOut {
             overlay_key: None,
             run_results: mpsc::channel(),
             run_error: None,
+            macros: MacroStore::load(dir.join("macros")),
+            macro_player: Player::default(),
+            last_report: None,
             haptics: Vec::new(),
             start: Instant::now(),
             dir,
@@ -688,6 +712,7 @@ impl PlayOut {
     /// `watched`: the Keyboard & mouse or Gamepad tab, and the Command Deck tab, are in view.
     pub fn process(&mut self, s: &ControllerState, watched: bool, deck_watched: bool) {
         let now = self.start.elapsed();
+        self.last_report = Some(Instant::now());
         let deck_on = self.config.deck.enabled;
         // The layout gets the controller without the controls the deck takes.
         let masked;
@@ -701,10 +726,16 @@ impl PlayOut {
         if self.applied.is_some() {
             self.engine.process(layout_state, now);
         }
-        if self.applied.is_some() || deck_on {
+        if self.applied.is_some() || deck_on || !self.macro_player.is_empty() {
             let mut frame = if self.applied.is_some() { self.engine.frame().clone() } else { Frame::default() };
             if deck_on {
                 frame.merge(self.deck.frame());
+            }
+            for name in std::mem::take(&mut frame.macros) {
+                self.toggle_macro(&name, now, Duration::ZERO);
+            }
+            if !self.macro_player.is_empty() {
+                frame.merge(self.macro_player.process(now));
             }
             // The other mode's engine starts fresh and would take the still-held button for a new
             // press, flipping back on every report: wait for the button to be let go.
@@ -784,6 +815,7 @@ impl PlayOut {
         self.release_input();
         self.engine.reset();
         self.deck.reset();
+        self.macro_player.stop_all();
         self.preview_engine = None;
         self.deck_preview_engine = None;
         self.speed = Speed::default();
@@ -893,6 +925,12 @@ impl PlayOut {
         while let Ok(result) = self.run_results.1.try_recv() {
             self.run_error = result.err();
         }
+        // No controller: the Macros tab's Play still plays.
+        if !self.macro_player.is_empty() && self.last_report.is_none_or(|t| t.elapsed() >= MACROS_ALONE) {
+            let frame = self.macro_player.process(self.start.elapsed()).clone();
+            let events = self.injector.apply(&frame).to_vec();
+            self.send_keymouse(&events);
+        }
         // Also while the Command Deck tab is in view, for the programs it offers.
         let watching = deck_watched && self.deck_preview.is_some();
         if self.config.keymouse.enabled || self.config.deck.enabled || watching {
@@ -964,6 +1002,49 @@ impl PlayOut {
         }))
     }
 
+    // ---------- Macros ----------
+
+    /// Start a macro, or stop it if it is playing.
+    fn toggle_macro(&mut self, name: &str, now: Duration, delay: Duration) {
+        if let Some(m) = self.macros.get(name) {
+            self.macro_player.toggle(name, m, now, delay);
+        }
+    }
+
+    /// Play a macro after `delay` (the Macros tab's Play, which leaves time to switch windows), or
+    /// stop it.
+    pub fn play_macro(&mut self, name: &str, delay: Duration) {
+        self.toggle_macro(name, self.start.elapsed(), delay);
+    }
+
+    pub fn macros(&mut self) -> &mut MacroStore {
+        &mut self.macros
+    }
+
+    pub fn save_macro(&mut self, name: &str, m: Macro) -> Result<(), String> {
+        self.macros.save(name, m)
+    }
+
+    /// Rename a macro and every deck action that plays it.
+    pub fn rename_macro(&mut self, from: &str, to: &str) -> Result<(), String> {
+        self.macros.rename(from, to)?;
+        let to = to.trim();
+        let mut changed = false;
+        for a in self.config.deck.actions_mut() {
+            if let Action::Macro { name } = a {
+                if name == from {
+                    *name = to.to_string();
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.save_config();
+            self.apply_deck();
+        }
+        Ok(())
+    }
+
     /// Haptics to play on the controller: the mode switch click.
     pub fn take_haptics(&mut self) -> Vec<Haptic> {
         std::mem::take(&mut self.haptics)
@@ -1004,6 +1085,7 @@ impl PlayOut {
             },
             preview,
             deck: self.deck_status(),
+            macros: self.macro_player.playing(),
         }
     }
 
@@ -1266,6 +1348,24 @@ mod tests {
         assert!(keys.save("a/b", Layout::default()).is_err());
         pads.delete("My racer").unwrap();
         assert!(pads.list().iter().all(|p| p.builtin));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn renaming_a_macro_renames_it_on_every_page() {
+        let dir = temp_dir("macros");
+        let mut play = PlayOut::new(dir.clone());
+        play.save_macro("Old", Macro::default()).unwrap();
+        let old = || Action::Macro { name: "Old".into() };
+        let mut deck = deck_with_wheel();
+        deck.buttons.insert("L4".into(), old());
+        let photo = AppDeck { app: "Photoshop".into(), deck: deck.clone() };
+        play.set_deck(DeckConfig { deck, apps: vec![photo], ..Default::default() });
+        play.rename_macro("Old", "New").unwrap();
+        let new = Action::Macro { name: "New".into() };
+        assert_eq!(play.config().deck.deck.buttons["L4"], new);
+        assert_eq!(play.config().deck.apps[0].deck.buttons["L4"], new);
+        assert_eq!(play.macros().list(), ["New"]);
         let _ = fs::remove_dir_all(&dir);
     }
 }

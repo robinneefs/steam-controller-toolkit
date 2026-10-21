@@ -52,6 +52,10 @@ export interface PickOptions {
   pad: boolean;
   /** Offer opening a program, file or web page (the Command Deck). */
   run?: boolean;
+  /** Offer playing one of these macros (the Command Deck). */
+  macros?: string[];
+  /** Offer Desktop ⇄ Game (default true; macro steps can't switch). */
+  switch?: boolean;
   /** A menu item's name: shows a name field, and `onLabel` gets every edit of it. */
   label?: string;
   onLabel?: (label: string) => void;
@@ -119,7 +123,10 @@ class BindPicker {
       ${opts.run ? `<div class="bind-sec"><span>Open</span><div class="run-row">
         <input class="field" data-run placeholder="Program, file, folder or https://…" value="${current.kind === "run" ? escape(current.target) : ""}" spellcheck="false" />
         <button class="mini" data-run-set title="Open this once per press">Set</button></div></div>` : ""}
-      <div class="bind-sec"><span>Other</span><div class="chips">${chip({ kind: "switch" }, "Desktop ⇄ Game")}${chip(NONE, "Nothing")}</div></div>`;
+      ${opts.macros ? `<div class="bind-sec"><span>Macro</span>${opts.macros.length
+        ? `<select class="field" data-macro title="Plays once per press; a second press while it plays stops it"><option value="">Pick a macro…</option>${opts.macros.map((m) => `<option value="${escape(m)}"${current.kind === "macro" && current.name === m ? " selected" : ""}>${escape(m)}</option>`).join("")}</select>`
+        : `<span class="hint">None yet: make one in the Macros tab.</span>`}</div>` : ""}
+      <div class="bind-sec"><span>Other</span><div class="chips">${opts.switch === false ? "" : chip({ kind: "switch" }, "Desktop ⇄ Game")}${chip(NONE, opts.switch === false ? "Nothing (a pause)" : "Nothing")}</div></div>`;
     this.el.hidden = false;
     this.openedAt = performance.now();
     const r = anchor.getBoundingClientRect();
@@ -173,6 +180,9 @@ class BindPicker {
     if (el.matches("[data-more]")) {
       const key = (el as HTMLSelectElement).value;
       if (key) this.pick({ kind: "key", keys: [key], repeat: this.repeat() });
+    } else if (el.matches("[data-macro]")) {
+      const name = (el as HTMLSelectElement).value;
+      if (name) this.pick({ kind: "macro", name });
     } else if (el.matches("[data-repeat]")) {
       // Changes the binding there is, if it can repeat.
       const c = this.current;

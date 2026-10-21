@@ -60,6 +60,8 @@ export class DeckTab implements Tab {
   /** The page edited: null All programs, else `apps[i]`. */
   private page: number | null = null;
   private recent: string[] = [];
+  /** Macro names, for the picker. */
+  private macros: string[] = [];
   private lastRunError: string | null = null;
   private lastLive = "";
   private shown = false;
@@ -123,10 +125,24 @@ export class DeckTab implements Tab {
 
   private async init(): Promise<void> {
     try {
+      this.macros = await invoke<string[]>("macro_list");
       const setup = await invoke<DeckSetup>("deck_setup");
       this.cfg = setup.config;
       this.defaults = { wheel: setup.wheel, grid: setup.grid };
       this.select(null);
+    } catch (e) {
+      this.flash(String(e));
+    }
+  }
+
+  /** On every visit: the macros there are now, and the pages (renaming a macro renames it here). */
+  private async refresh(): Promise<void> {
+    try {
+      this.macros = await invoke<string[]>("macro_list");
+      const setup = await invoke<DeckSetup>("deck_setup");
+      if (JSON.stringify(setup.config) === JSON.stringify(this.cfg)) return;
+      this.cfg = setup.config;
+      this.select(this.page !== null && this.page < this.cfg.apps.length ? this.page : null);
     } catch (e) {
       this.flash(String(e));
     }
@@ -248,6 +264,7 @@ export class DeckTab implements Tab {
       pickAction(itemEl, `${PART_TITLES[part]}: item ${Number(i) + 1}`, item.action, {
         pad: false,
         run: true,
+        macros: this.macros,
         label: item.label,
         onLabel: (label) => {
           item.label = label;
@@ -264,7 +281,7 @@ export class DeckTab implements Tab {
     const bind = el.closest<HTMLElement>("[data-bind]");
     if (bind) {
       const c = bind.dataset.bind!;
-      pickAction(bind, BUTTON_LABELS[c] ?? c, d.buttons[c] ?? NONE, { pad: false, run: true }, (a) => {
+      pickAction(bind, BUTTON_LABELS[c] ?? c, d.buttons[c] ?? NONE, { pad: false, run: true, macros: this.macros }, (a) => {
         if (a.kind === "none") delete d.buttons[c];
         else d.buttons[c] = a;
         this.renderCards();
@@ -336,6 +353,7 @@ export class DeckTab implements Tab {
     if (!this.shown) {
       this.shown = true;
       invoke("deck_set_preview", { page: this.page, open: true }).catch(() => {});
+      if (this.cfg) this.refresh();
     }
     const d = snap.play?.deck;
     if (!d) return;

@@ -197,6 +197,8 @@ pub enum Action {
     Switch,
     /// Open a program, file, folder or URL, once per press (`play_out.rs` hands it to the system).
     Run { target: String },
+    /// Play a macro (`macros.rs`) by name; a second press while it plays stops it.
+    Macro { name: String },
 }
 
 impl Action {
@@ -436,6 +438,8 @@ pub struct Frame {
     pub switch_held: bool,
     /// Run actions pressed.
     pub runs: Vec<String>,
+    /// Macros pressed (to start, or stop if playing).
+    pub macros: Vec<String>,
     /// Bit per side (0 left, 1 right) whose Command Deck menu moved to another item: tick it.
     pub ticks: u8,
     pub gyro_active: bool,
@@ -456,6 +460,7 @@ impl Frame {
         }
         self.taps.extend_from_slice(&o.taps);
         self.runs.extend_from_slice(&o.runs);
+        self.macros.extend_from_slice(&o.macros);
         self.switch |= o.switch;
         self.switch_held |= o.switch_held;
         self.ticks |= o.ticks;
@@ -473,6 +478,7 @@ pub(crate) enum Act {
     Pad(PadInput),
     Switch,
     Run(String),
+    Macro(String),
 }
 
 impl Act {
@@ -494,6 +500,8 @@ impl Act {
             Action::Switch => Act::Switch,
             Action::Run { target } if target.trim().is_empty() => Act::None,
             Action::Run { target } => Act::Run(target.trim().to_string()),
+            Action::Macro { name } if name.trim().is_empty() => Act::None,
+            Action::Macro { name } => Act::Macro(name.trim().to_string()),
         }
     }
 }
@@ -584,6 +592,11 @@ pub(crate) fn apply(a: &Act, pressed: bool, analog: f32, p: &mut Press, now: Dur
         Act::Run(target) => {
             if rising {
                 f.runs.push(target.clone());
+            }
+        }
+        Act::Macro(name) => {
+            if rising {
+                f.macros.push(name.clone());
             }
         }
     }

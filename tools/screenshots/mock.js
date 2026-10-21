@@ -31,6 +31,21 @@
     { name: "Gyro figure eight", bytes: 198656, seconds: 6.1, modified: Date.parse("2026-10-18T14:41:00") },
   ];
 
+  // The Macros tab's, kept in memory.
+  const key = (keys) => ({ kind: "key", keys, repeat: false });
+  const macros = {
+    "Save and close": { steps: [{ action: key(["Ctrl", "S"]), hold: 30, wait: 400 }, { action: key(["Alt", "F4"]), hold: 30, wait: 0 }] },
+    "Reload combo": {
+      steps: [
+        { action: key(["R"]), hold: 600, wait: 120 },
+        { action: { kind: "mouse", button: "right" }, hold: 30, wait: 80 },
+        { action: { kind: "none" }, hold: 0, wait: 500 },
+        { action: { kind: "scroll", dir: "down", repeat: false }, hold: 30, wait: 0 },
+      ],
+    },
+  };
+  const macroNames = () => Object.keys(macros).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
   const answers = {
     "plugin:app|version": async () => (await (await fetch("/package.json")).json()).version,
     "plugin:event|listen": (args) => {
@@ -53,6 +68,18 @@
     play_setup: () => ({ ...structuredClone(data.play.setup), mode: params.get("slot") === "game" || tab === "gamepad" ? "game" : "desktop" }),
     play_list_presets: (args) => data.play.presets[args.kind],
     play_load_preset: (args) => structuredClone(data.play.builtin[args.kind].find((l) => l.name === args.name)),
+    macro_list: () => macroNames(),
+    macro_load: (args) => structuredClone(macros[args.name]),
+    macro_save: (args) => {
+      macros[args.name] = structuredClone(args.content);
+    },
+    macro_rename: (args) => {
+      macros[args.to] = macros[args.from];
+      delete macros[args.from];
+    },
+    macro_delete: (args) => {
+      delete macros[args.name];
+    },
     deck_setup: () => structuredClone(data.play.deck_setup ?? { config: { enabled: false, overlay: true, deck: emptyDeck(), apps: [] }, wheel: [], grid: [] }),
   };
 
