@@ -168,8 +168,9 @@ function renderDots(snap: Snapshot): void {
   setDot("osc", osc.length ? "ok" : "", osc.length > 1 ? `Sending to ${osc.length} destinations` : osc.length ? `Sending to ${osc[0].address}` : "");
   const play = snap.play;
   if (play) {
-    const km = play.keymouse.enabled && (play.active === "desktop" || play.active === "game");
-    setDot("keymouse", km ? "ok" : "", km ? `${play.active === "desktop" ? "Desktop" : "Game"} layout` : "");
+    const km = play.keymouse.enabled && !!play.active && play.active !== "pad";
+    const which = play.active === "desktop" ? "Desktop" : play.active === "game" ? "Game" : play.app;
+    setDot("keymouse", km ? "ok" : "", km ? `${which} layout` : "");
     const pad = play.gamepad.connected;
     setDot("gamepad", pad ? "ok" : "", pad ? (play.gamepad.player ? `Player ${play.gamepad.player}` : "Connected") : "");
   }

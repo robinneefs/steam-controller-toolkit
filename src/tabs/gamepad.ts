@@ -246,6 +246,7 @@ export class GamepadTab implements Tab {
     const v = p.preview;
     const live = v.slot === "pad" && !!snap.state;
     this.editor.showLit(live ? v.lit : 0, live && v.gyro_active);
+    this.editor.showRadial(live ? v.radial : [null, null]);
     this.renderPad(live ? v.pad : { buttons: 0, lt: 0, rt: 0, lx: 0, ly: 0, rx: 0, ry: 0 });
     renderChips(this.q("[data-keys]"), live ? v.keys : [], live ? v.mouse_buttons : 0);
     setText(this.q("[data-player]"), g.connected ? (g.player ? `Player ${g.player}` : "Connected") : g.enabled ? "" : "Off");

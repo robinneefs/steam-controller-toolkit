@@ -5,26 +5,28 @@
 //! There are two modes, Desktop and Game, and up to three layouts: Keyboard & mouse has one for
 //! each mode, the Gamepad one. With both outputs on, the desktop gets keyboard and mouse and games
 //! get the gamepad ([`active_slot`]). A Switch action (the Steam button in every built-in) flips
-//! the mode; with auto switch on, a full-screen app means Game.
+//! the mode; with auto switch on, a full-screen app means Game. Keyboard & mouse can also have a
+//! layout per program, which plays instead of the mode's while that program is in front.
 //!
 //! The virtual pad is opened on a thread of its own (plugging one in takes a moment), and so is
 //! the driver check and install; `tick` picks up the results.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use sc_core::protocol::Haptic;
 use sc_core::ControllerState;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::devices::{self, KeyMouse, PadSupport, VirtualPad};
+use crate::devices::{self, Foreground, KeyMouse, PadSupport, VirtualPad};
 use crate::layout::{builtin_gamepad, builtin_keymouse, Engine, Event, Frame, Injector, Layout, PadState, KEYS};
 
-/// How often to look at the foreground window for auto switch.
-const FULLSCREEN_POLL: Duration = Duration::from_millis(500);
+/// How often to look at the foreground window for auto switch and per-program layouts.
+const FOREGROUND_POLL: Duration = Duration::from_millis(500);
 /// How often to ask the system for the pad's player number.
 const PLAYER_POLL: Duration = Duration::from_secs(1);
 /// How long to wait before plugging the pad in again after it failed.
@@ -32,6 +34,10 @@ const RETRY: Duration = Duration::from_secs(5);
 const PRESET_EXT: &str = "json";
 /// The haptic click played on every mode switch.
 const SWITCH_CLICK: Haptic = Haptic::Command { side: 2, command: 2, gain_db: 0 };
+/// The tick a radial menu plays on its trackpad's side when the thumb moves to another item.
+const RADIAL_TICK: u8 = 1;
+/// How many programs seen in front the Keyboard & mouse tab offers for a per-program layout.
+const RECENT_APPS: usize = 8;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -41,9 +47,8 @@ pub enum Mode {
     Game,
 }
 
-/// One of the three layouts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// One of the layouts. In JSON a string: `desktop`, `game`, `pad`, `app:<index>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
     /// Keyboard & mouse, Desktop mode.
     Desktop,
@@ -51,6 +56,37 @@ pub enum Slot {
     Game,
     /// The Gamepad tab's layout.
     Pad,
+    /// Keyboard & mouse, the layout of `KeyMouseConfig::apps[i]`.
+    App(usize),
+}
+
+impl FromStr for Slot {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "desktop" => Ok(Slot::Desktop),
+            "game" => Ok(Slot::Game),
+            "pad" => Ok(Slot::Pad),
+            _ => s.strip_prefix("app:").and_then(|i| i.parse().ok()).map(Slot::App).ok_or_else(|| format!("No layout \"{s}\"")),
+        }
+    }
+}
+
+impl Serialize for Slot {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Slot::Desktop => s.serialize_str("desktop"),
+            Slot::Game => s.serialize_str("game"),
+            Slot::Pad => s.serialize_str("pad"),
+            Slot::App(i) => s.serialize_str(&format!("app:{i}")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Slot {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        String::deserialize(d)?.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 /// Which layout plays in `mode` with the outputs that are on: in Desktop the keyboard & mouse
@@ -94,12 +130,34 @@ fn builtin(kind: PresetKind, name: &str) -> Layout {
     list.iter().find(|l| l.name == name).or(list.first()).cloned().unwrap_or_default()
 }
 
+/// A Keyboard & mouse layout that plays while one program is in front, whatever the mode.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AppLayout {
+    /// The program's file name (`Photoshop.exe`); any case, `.exe` optional.
+    pub app: String,
+    pub layout: Layout,
+}
+
+impl AppLayout {
+    pub fn matches(&self, app: &str) -> bool {
+        let bare = |s: &str| {
+            let s = s.trim().to_lowercase();
+            s.strip_suffix(".exe").map(str::to_string).unwrap_or(s)
+        };
+        let want = bare(&self.app);
+        !want.is_empty() && want == bare(app)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeyMouseConfig {
     pub enabled: bool,
     pub desktop: Layout,
     pub game: Layout,
+    /// Per-program layouts; the first that matches the program in front plays.
+    pub apps: Vec<AppLayout>,
 }
 
 impl Default for KeyMouseConfig {
@@ -108,6 +166,7 @@ impl Default for KeyMouseConfig {
             enabled: false,
             desktop: builtin(PresetKind::Keymouse, "Desktop"),
             game: builtin(PresetKind::Keymouse, "Shooter (WASD + mouse)"),
+            apps: Vec::new(),
         }
     }
 }
@@ -142,11 +201,13 @@ impl Default for Config {
 }
 
 impl Config {
-    fn layout(&self, slot: Slot) -> &Layout {
+    /// None for a per-program layout that no longer exists.
+    fn layout(&self, slot: Slot) -> Option<&Layout> {
         match slot {
-            Slot::Desktop => &self.keymouse.desktop,
-            Slot::Game => &self.keymouse.game,
-            Slot::Pad => &self.gamepad.layout,
+            Slot::Desktop => Some(&self.keymouse.desktop),
+            Slot::Game => Some(&self.keymouse.game),
+            Slot::Pad => Some(&self.gamepad.layout),
+            Slot::App(i) => self.keymouse.apps.get(i).map(|a| &a.layout),
         }
     }
 }
@@ -157,6 +218,10 @@ pub struct KeyMouseStatus {
     pub supported: bool,
     /// The system refused the input (a secure screen in front, or no access to /dev/uinput).
     pub error: Option<String>,
+    /// The last program, file or URL that couldn't be opened, and why.
+    pub run_error: Option<String>,
+    /// Per-program layouts work here (the program in front can be told).
+    pub apps_supported: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -192,6 +257,8 @@ pub struct Preview {
     pub gyro_active: bool,
     /// Bit per control in use (`layout::CONTROLS`, then `LIT_*`).
     pub lit: u64,
+    /// Each trackpad's radial menu item under the thumb or playing.
+    pub radial: [Option<u8>; 2],
 }
 
 /// What both tabs, the tray and the sidebar show; `Snapshot.play`, mirrored in `controller.ts`.
@@ -201,6 +268,10 @@ pub struct PlayStatus {
     pub auto_switch: bool,
     /// The full-screen app auto switch sees, by file name.
     pub fullscreen_app: Option<String>,
+    /// The program in front whose own layout plays, by file name.
+    pub app: Option<String>,
+    /// Programs seen in front lately, most recent first, to make per-program layouts for.
+    pub recent_apps: Vec<String>,
     /// The layout in play, if any.
     pub active: Option<Slot>,
     pub keymouse: KeyMouseStatus,
@@ -316,6 +387,7 @@ pub(crate) fn preview(slot: Option<Slot>, f: Option<&Frame>, speed: &Speed) -> P
             scroll: speed.scroll,
             gyro_active: f.gyro_active,
             lit: f.lit,
+            radial: f.radial,
         },
         None => Preview { slot, ..Default::default() },
     }
@@ -352,7 +424,14 @@ pub struct PlayOut {
     install_error: Option<String>,
     /// The full-screen window auto switch last saw: a manual switch holds until it changes.
     fullscreen: Option<(isize, String)>,
-    fullscreen_checked: Option<Instant>,
+    foreground_checked: Option<Instant>,
+    /// The program in front, by file name, and its layout (`KeyMouseConfig::apps` index).
+    front: Option<String>,
+    app: Option<usize>,
+    recent_apps: Vec<String>,
+    /// Results of opening programs, files and URLs (Run actions), each on a thread of its own.
+    run_results: (mpsc::Sender<Result<(), String>>, mpsc::Receiver<Result<(), String>>),
+    run_error: Option<String>,
     /// Haptics for the controller, for `forward_events` to send.
     haptics: Vec<Haptic>,
     start: Instant,
@@ -401,7 +480,12 @@ impl PlayOut {
             install: None,
             install_error: None,
             fullscreen: None,
-            fullscreen_checked: None,
+            foreground_checked: None,
+            front: None,
+            app: None,
+            recent_apps: Vec::new(),
+            run_results: mpsc::channel(),
+            run_error: None,
             haptics: Vec::new(),
             start: Instant::now(),
             dir,
@@ -431,20 +515,23 @@ impl PlayOut {
     }
 
     fn active(&self) -> Option<Slot> {
-        active_slot(self.mode, self.config.keymouse.enabled, self.config.gamepad.enabled)
+        match active_slot(self.mode, self.config.keymouse.enabled, self.config.gamepad.enabled) {
+            Some(Slot::Desktop | Slot::Game) if self.app.is_some_and(|i| i < self.config.keymouse.apps.len()) => self.app.map(Slot::App),
+            slot => slot,
+        }
     }
 
     /// After a change of mode or config: put the layout that should play in the engine, letting
     /// go of what the old one held.
     fn apply_active(&mut self) {
         let want = self.active();
-        let same = want == self.applied && want.is_none_or(|s| self.engine.layout() == self.config.layout(s));
+        let same = want == self.applied && want.is_none_or(|s| self.config.layout(s) == Some(self.engine.layout()));
         if same {
             return;
         }
         self.release_input();
         self.applied = want;
-        self.engine.set_layout(want.map(|s| self.config.layout(s).clone()).unwrap_or_default());
+        self.engine.set_layout(want.and_then(|s| self.config.layout(s)).cloned().unwrap_or_default());
         if want.is_none() {
             // Nothing to send: let the keyboard and mouse device go (on Linux it's a device).
             self.keymouse = None;
@@ -484,6 +571,8 @@ impl PlayOut {
     pub fn set_keymouse(&mut self, cfg: KeyMouseConfig) {
         self.config.keymouse = cfg;
         self.save_config();
+        // The programs may have changed: match the one in front again.
+        self.app = self.app_layout();
         self.apply_active();
     }
 
@@ -505,7 +594,7 @@ impl PlayOut {
         self.config.auto_switch = on;
         // Start over: the window in front now decides at the next poll.
         self.fullscreen = None;
-        self.fullscreen_checked = None;
+        self.foreground_checked = None;
         self.save_config();
     }
 
@@ -536,6 +625,18 @@ impl PlayOut {
             let switch = frame.switch && !self.switch_held;
             self.switch_held = frame.switch_held && (switch || self.switch_held);
             let events = self.injector.apply(frame).to_vec();
+            for side in 0..2 {
+                if frame.ticks & (1 << side) != 0 {
+                    self.haptics.push(Haptic::Command { side, command: RADIAL_TICK, gain_db: 0 });
+                }
+            }
+            for target in frame.runs.clone() {
+                let done = self.run_results.0.clone();
+                thread::spawn(move || {
+                    let result = tauri_plugin_opener::open_url(&target, None::<&str>).map_err(|e| format!("Couldn't open {target}: {e}"));
+                    let _ = done.send(result);
+                });
+            }
             if self.applied == self.preview_slot {
                 self.speed.add(self.engine.frame(), now);
             }
@@ -568,9 +669,10 @@ impl PlayOut {
             }
         }
         match self.preview_slot {
-            Some(slot) if watched && self.applied != Some(slot) => {
-                if self.preview_engine.as_ref().is_none_or(|(s, e)| *s != slot || e.layout() != self.config.layout(slot)) {
-                    self.preview_engine = Some((slot, Engine::new(self.config.layout(slot).clone())));
+            Some(slot) if watched && self.applied != Some(slot) && self.config.layout(slot).is_some() => {
+                let layout = self.config.layout(slot).unwrap();
+                if self.preview_engine.as_ref().is_none_or(|(s, e)| *s != slot || e.layout() != layout) {
+                    self.preview_engine = Some((slot, Engine::new(layout.clone())));
                 }
                 let (_, engine) = self.preview_engine.as_mut().unwrap();
                 self.speed.add(engine.process(s, now), now);
@@ -688,24 +790,57 @@ impl PlayOut {
                 self.player_checked = Some(Instant::now());
             }
         }
-        if self.config.auto_switch && self.config.keymouse.enabled {
-            if self.fullscreen_checked.is_none_or(|t| t.elapsed() >= FULLSCREEN_POLL) {
-                self.fullscreen_checked = Some(Instant::now());
-                let seen = devices::fullscreen_app();
-                self.foreground(seen);
+        while let Ok(result) = self.run_results.1.try_recv() {
+            self.run_error = result.err();
+        }
+        // Also while the Keyboard & mouse tab is in view, for the programs it offers.
+        let watching = matches!(self.preview_slot, Some(Slot::Desktop | Slot::Game | Slot::App(_)));
+        if self.config.keymouse.enabled || watching {
+            if self.foreground_checked.is_none_or(|t| t.elapsed() >= FOREGROUND_POLL) {
+                self.foreground_checked = Some(Instant::now());
+                self.foreground(devices::foreground());
             }
         } else {
             self.fullscreen = None;
+            self.front = None;
+            self.set_app(None);
         }
     }
 
-    /// What auto switch saw in front: switch only when it changed, so a manual switch holds.
-    fn foreground(&mut self, seen: Option<(isize, String)>) {
-        let changed = seen.as_ref().map(|s| s.0) != self.fullscreen.as_ref().map(|s| s.0);
-        if changed {
-            self.set_mode(if seen.is_some() { Mode::Game } else { Mode::Desktop });
+    /// The window in front. Auto switch switches only when the full-screen one changed, so a
+    /// manual switch holds; a program with a layout of its own gets it.
+    fn foreground(&mut self, seen: Option<Foreground>) {
+        if let Some(f) = &seen {
+            if self.recent_apps.first() != Some(&f.app) {
+                self.recent_apps.retain(|a| a != &f.app);
+                self.recent_apps.insert(0, f.app.clone());
+                self.recent_apps.truncate(RECENT_APPS);
+            }
         }
-        self.fullscreen = seen;
+        if self.config.auto_switch && self.config.keymouse.enabled {
+            let full = seen.as_ref().filter(|f| f.fullscreen).map(|f| (f.id, f.app.clone()));
+            if full.as_ref().map(|s| s.0) != self.fullscreen.as_ref().map(|s| s.0) {
+                self.set_mode(if full.is_some() { Mode::Game } else { Mode::Desktop });
+            }
+            self.fullscreen = full;
+        } else {
+            self.fullscreen = None;
+        }
+        self.front = seen.map(|f| f.app);
+        self.set_app(self.app_layout());
+    }
+
+    /// The per-program layout for the program in front.
+    fn app_layout(&self) -> Option<usize> {
+        let front = self.front.as_deref()?;
+        self.config.keymouse.apps.iter().position(|a| a.matches(front))
+    }
+
+    fn set_app(&mut self, app: Option<usize>) {
+        if app != self.app {
+            self.app = app;
+            self.apply_active();
+        }
     }
 
     /// Haptics to play on the controller: the mode switch click.
@@ -729,11 +864,18 @@ impl PlayOut {
             mode: self.mode,
             auto_switch: self.config.auto_switch,
             fullscreen_app: self.fullscreen.as_ref().map(|f| f.1.clone()),
+            app: match self.applied {
+                Some(Slot::App(i)) => self.config.keymouse.apps.get(i).map(|a| a.app.clone()),
+                _ => None,
+            },
+            recent_apps: self.recent_apps.clone(),
             active: self.applied,
             keymouse: KeyMouseStatus {
                 enabled: self.config.keymouse.enabled,
                 supported: devices::KEYMOUSE_SUPPORTED,
                 error: self.keymouse_error.clone(),
+                run_error: self.run_error.clone(),
+                apps_supported: devices::FOREGROUND_SUPPORTED,
             },
             gamepad: GamepadStatus {
                 enabled: self.config.gamepad.enabled,
@@ -769,6 +911,67 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sc-play-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         dir
+    }
+
+    fn full(id: isize, app: &str) -> Foreground {
+        Foreground { id, app: app.into(), fullscreen: true }
+    }
+
+    #[test]
+    fn slots_are_strings_in_json() {
+        for (slot, json) in [(Slot::Desktop, "\"desktop\""), (Slot::Pad, "\"pad\""), (Slot::App(3), "\"app:3\"")] {
+            assert_eq!(serde_json::to_string(&slot).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Slot>(json).unwrap(), slot);
+        }
+        assert!(serde_json::from_str::<Slot>("\"app:x\"").is_err());
+    }
+
+    #[test]
+    fn a_program_with_its_own_layout_gets_it() {
+        let dir = temp_dir("apps");
+        let mut play = PlayOut::new(dir.clone());
+        let photo = AppLayout { app: "Photoshop".into(), layout: Layout { name: "Photo".into(), ..Layout::default() } };
+        assert!(photo.matches("photoshop.EXE") && !photo.matches("photoshop2.exe"));
+        assert!(!AppLayout::default().matches(""));
+        play.set_keymouse(KeyMouseConfig { enabled: true, apps: vec![photo], ..Default::default() });
+        play.foreground(Some(Foreground { fullscreen: false, ..full(1, "Photoshop.exe") }));
+        assert_eq!(play.status().active, Some(Slot::App(0)));
+        assert_eq!(play.status().app.as_deref(), Some("Photoshop"));
+        // Whatever the mode.
+        play.set_mode(Mode::Game);
+        assert_eq!(play.status().active, Some(Slot::App(0)));
+        // Except when the gamepad has games.
+        play.set_gamepad(GamepadConfig { enabled: true, ..Default::default() });
+        assert_eq!(play.status().active, Some(Slot::Pad));
+        play.set_mode(Mode::Desktop);
+        assert_eq!(play.status().active, Some(Slot::App(0)));
+        // Removed and added again while it's in front.
+        let apps = play.config().keymouse.apps.clone();
+        play.set_keymouse(KeyMouseConfig { apps: Vec::new(), ..play.config().keymouse.clone() });
+        assert_eq!(play.status().active, Some(Slot::Desktop));
+        play.set_keymouse(KeyMouseConfig { apps, ..play.config().keymouse.clone() });
+        assert_eq!(play.status().active, Some(Slot::App(0)));
+        play.foreground(Some(Foreground { fullscreen: false, ..full(2, "explorer.exe") }));
+        assert_eq!(play.status().active, Some(Slot::Desktop));
+        assert_eq!(play.status().app, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn radial_ticks_reach_the_controller() {
+        use crate::layout::{Action, PadMode};
+        use sc_core::protocol::Trackpad;
+        let dir = temp_dir("radial");
+        let mut play = PlayOut::new(dir.clone());
+        let mut layout = Layout::default();
+        layout.right_pad = PadMode::Radial { items: vec![Action::key(&["A"]), Action::key(&["B"])], click: true };
+        play.set_keymouse(KeyMouseConfig { enabled: true, desktop: layout, ..Default::default() });
+        let thumb = |y: i16| ControllerState { right_pad: Trackpad { touched: true, x: 0, y, ..Default::default() }, ..Default::default() };
+        play.process(&thumb(30000), false);
+        play.process(&thumb(30000), false);
+        play.process(&thumb(-30000), false);
+        assert_eq!(play.take_haptics(), vec![Haptic::Command { side: 1, command: RADIAL_TICK, gain_db: 0 }; 2]);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -827,18 +1030,26 @@ mod tests {
     fn auto_switch_follows_full_screen_and_manual_switch_holds() {
         let dir = temp_dir("auto");
         let mut play = PlayOut::new(dir.clone());
-        play.foreground(Some((7, "game.exe".into())));
+        // Keyboard & mouse off: auto switch leaves the mode alone.
+        play.foreground(Some(full(7, "game.exe")));
+        assert_eq!(play.mode(), Mode::Desktop);
+        play.set_keymouse(KeyMouseConfig { enabled: true, ..Default::default() });
+        play.foreground(Some(full(7, "game.exe")));
         assert_eq!(play.mode(), Mode::Game);
         assert_eq!(play.status().fullscreen_app.as_deref(), Some("game.exe"));
         // Back to the desktop by hand: holds while the same game stays in front.
         play.set_mode(Mode::Desktop);
-        play.foreground(Some((7, "game.exe".into())));
+        play.foreground(Some(full(7, "game.exe")));
         assert_eq!(play.mode(), Mode::Desktop);
-        // The game closes: Desktop (already); another one goes full screen: Game.
+        // The game closes: Desktop (already); a window that isn't full screen: still Desktop.
         play.foreground(None);
         assert_eq!(play.mode(), Mode::Desktop);
-        play.foreground(Some((9, "other.exe".into())));
+        play.foreground(Some(Foreground { fullscreen: false, ..full(8, "notepad.exe") }));
+        assert_eq!(play.mode(), Mode::Desktop);
+        // Another one goes full screen: Game.
+        play.foreground(Some(full(9, "other.exe")));
         assert_eq!(play.mode(), Mode::Game);
+        assert_eq!(play.status().recent_apps, ["other.exe", "notepad.exe", "game.exe"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

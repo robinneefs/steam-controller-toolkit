@@ -21,7 +21,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, XBUTTON1, XBUTTON2,
 };
 
-use crate::devices::KeyMouse;
+use crate::devices::{Foreground, KeyMouse};
 use crate::layout::{Event, MouseButton, KEYS};
 
 /// Marks our own events (`dwExtraInfo`), "SC".
@@ -175,7 +175,7 @@ impl KeyMouse for Injector {
 /// Window classes of the desktop and taskbar, which fill the screen but aren't apps.
 const SHELL_CLASSES: &[&str] = &["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];
 
-pub fn fullscreen_app() -> Option<(isize, String)> {
+pub fn foreground() -> Option<Foreground> {
     // SAFETY: plain Win32 queries on the foreground window, with buffers of the sizes passed.
     unsafe {
         let hwnd: HWND = GetForegroundWindow();
@@ -194,20 +194,17 @@ pub fn fullscreen_app() -> Option<(isize, String)> {
             return None;
         }
         let mut rect: RECT = std::mem::zeroed();
-        if GetWindowRect(hwnd, &mut rect) == 0 {
-            return None;
-        }
         let mut info: MONITORINFO = std::mem::zeroed();
         info.cbSize = size_of::<MONITORINFO>() as u32;
-        if GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info) == 0 {
-            return None;
-        }
-        let m = info.rcMonitor;
-        let covers = rect.left <= m.left && rect.top <= m.top && rect.right >= m.right && rect.bottom >= m.bottom;
-        if !covers {
-            return None;
-        }
-        Some((hwnd as isize, process_name(pid).unwrap_or_else(|| "Full-screen app".into())))
+        let fullscreen = GetWindowRect(hwnd, &mut rect) != 0
+            && GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info) != 0
+            && {
+                let m = info.rcMonitor;
+                rect.left <= m.left && rect.top <= m.top && rect.right >= m.right && rect.bottom >= m.bottom
+            };
+        // A program we can't name only matters to auto switch.
+        let app = process_name(pid).or_else(|| fullscreen.then(|| "Full-screen app".into()))?;
+        Some(Foreground { id: hwnd as isize, app, fullscreen })
     }
 }
 

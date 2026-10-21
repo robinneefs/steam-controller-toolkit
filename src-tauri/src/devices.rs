@@ -20,6 +20,17 @@ pub trait VirtualPad: Send {
     fn player(&mut self) -> Option<u8>;
 }
 
+/// The window in front (not ours, not the desktop or taskbar).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Foreground {
+    /// Stable while that window lives.
+    pub id: isize,
+    /// The program's file name.
+    pub app: String,
+    /// It fills its monitor (a full-screen game).
+    pub fullscreen: bool,
+}
+
 /// Whether a virtual pad can be made here.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -47,11 +58,9 @@ pub fn open_pad() -> Result<Box<dyn VirtualPad>, String> {
     Ok(Box::new(crate::vigem::Pad::open()?))
 }
 
-/// The foreground window if it fills its monitor (a full-screen game), as a stable id and the
-/// program's file name.
 #[cfg(windows)]
-pub fn fullscreen_app() -> Option<(isize, String)> {
-    crate::inject_win::fullscreen_app()
+pub fn foreground() -> Option<Foreground> {
+    crate::inject_win::foreground()
 }
 
 #[cfg(target_os = "linux")]
@@ -70,7 +79,7 @@ pub fn open_pad() -> Result<Box<dyn VirtualPad>, String> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn fullscreen_app() -> Option<(isize, String)> {
+pub fn foreground() -> Option<Foreground> {
     None
 }
 
@@ -90,9 +99,11 @@ pub fn open_pad() -> Result<Box<dyn VirtualPad>, String> {
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
-pub fn fullscreen_app() -> Option<(isize, String)> {
+pub fn foreground() -> Option<Foreground> {
     None
 }
 
 /// Keyboard & mouse output works on this system.
 pub const KEYMOUSE_SUPPORTED: bool = cfg!(any(windows, target_os = "linux"));
+/// [`foreground`] says which program is in front (auto switch, per-program layouts).
+pub const FOREGROUND_SUPPORTED: bool = cfg!(windows);

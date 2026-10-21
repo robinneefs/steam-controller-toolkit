@@ -913,6 +913,12 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .preset-bar [data-preset], .preset-bar [data-save-name] { width: auto; min-width: 210px; max-width: 280px; }
 .preset-bar [hidden] { display: none; }
 .preset-bar .mini { flex: none; white-space: nowrap; }
+.app-pick { width: auto; max-width: 190px; height: 28px; font-size: 13px; }
+.app-pick.on { border-color: var(--accent); color: var(--text); }
+.app-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 8px 0 0; font-size: 13px; }
+.app-row[hidden] { display: none; }
+.app-row .field { flex: 0 1 260px; min-width: 160px; height: 28px; }
+.app-row .mini { margin-left: auto; }
 .layout-note { min-height: 1.4em; margin: 6px 8px 6px 0 !important; }
 
 .layout-editor {
@@ -963,6 +969,8 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .bind-sec > span { padding-top: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .bind-sec > .chk { grid-column: 2; font-size: 12.5px; }
 .bind-sec .field { height: 26px; }
+.run-row { display: flex; gap: 6px; min-width: 0; }
+.run-row .field { flex: 1; min-width: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chips .chip { padding: 2px 8px; font-size: 12px; }
 

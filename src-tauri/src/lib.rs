@@ -760,7 +760,7 @@ mod screenshot_data {
                     mode: Mode::Desktop,
                     auto_switch: true,
                     active: Some(Slot::Desktop),
-                    keymouse: play_out::KeyMouseStatus { enabled: true, supported: true, error: None },
+                    keymouse: play_out::KeyMouseStatus { enabled: true, supported: true, apps_supported: true, ..Default::default() },
                     gamepad: play_out::GamepadStatus {
                         enabled: true,
                         support: Some(devices::PadSupport::Ready),

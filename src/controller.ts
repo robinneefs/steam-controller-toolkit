@@ -218,7 +218,9 @@ export type Action =
   | { kind: "mouse"; button: MouseButton }
   | { kind: "scroll"; dir: Dir; repeat: boolean }
   | { kind: "pad"; input: PadInput }
-  | { kind: "switch" };
+  | { kind: "switch" }
+  /** Open a program, file, folder or URL, once per press. */
+  | { kind: "run"; target: string };
 
 export interface Directions {
   up: Action;
@@ -241,7 +243,9 @@ export type PadMode =
   | { kind: "mouse"; speed: number; trackball: boolean }
   | { kind: "scroll"; speed: number }
   | { kind: "stick"; target: Side }
-  | ({ kind: "directions"; click: boolean } & Directions);
+  | ({ kind: "directions"; click: boolean } & Directions)
+  /** A menu used by feel: a slice per item, the first at the top, clockwise; plays on click or lift. */
+  | { kind: "radial"; items: Action[]; click: boolean };
 
 export type GyroOutput = "none" | "mouse" | "stick" | "steer";
 export type Activation =
@@ -278,13 +282,22 @@ export interface Layout {
 }
 
 export type PlayMode = "desktop" | "game";
-/** One of the three layouts: Keyboard & mouse for Desktop and for Game, and the Gamepad's. */
-export type PlaySlot = "desktop" | "game" | "pad";
+/** One of the layouts: Keyboard & mouse for Desktop, for Game and per program (`apps` index), and
+ * the Gamepad's. */
+export type PlaySlot = "desktop" | "game" | "pad" | `app:${number}`;
+
+/** A Keyboard & mouse layout that plays while one program is in front, whatever the mode. */
+export interface AppLayout {
+  /** The program's file name (`Photoshop.exe`); any case, `.exe` optional. */
+  app: string;
+  layout: Layout;
+}
 
 export interface KeyMouseConfig {
   enabled: boolean;
   desktop: Layout;
   game: Layout;
+  apps: AppLayout[];
 }
 
 export interface GamepadConfig {
@@ -318,9 +331,21 @@ export interface PlayStatus {
   auto_switch: boolean;
   /** The full-screen app auto switch sees, by file name. */
   fullscreen_app: string | null;
+  /** The program in front whose own layout plays. */
+  app: string | null;
+  /** Programs seen in front lately, most recent first. */
+  recent_apps: string[];
   /** The layout in play. */
   active: PlaySlot | null;
-  keymouse: { enabled: boolean; supported: boolean; error: string | null };
+  keymouse: {
+    enabled: boolean;
+    supported: boolean;
+    error: string | null;
+    /** The last program, file or URL that couldn't be opened, and why. */
+    run_error: string | null;
+    /** Per-program layouts work here. */
+    apps_supported: boolean;
+  };
   gamepad: {
     enabled: boolean;
     /** null while being checked. */
@@ -347,6 +372,8 @@ export interface PlayStatus {
     gyro_active: boolean;
     /** Bit per control in use (`CONTROLS` index, then the sticks, pads and gyro). */
     lit: number;
+    /** Each trackpad's radial menu item under the thumb or playing. */
+    radial: [number | null, number | null];
   };
 }
 
