@@ -49,9 +49,9 @@ impl Outputs {
 
     /// Called often from the event loop, outside other locks: ports and hosts that finished
     /// opening or looking up, retries, rates, the virtual pad and auto switch.
-    pub fn tick(&self) {
+    pub fn tick(&self, watched: Watched) {
         self.midi.lock().unwrap().tick();
         self.osc.lock().unwrap().tick();
-        self.play.lock().unwrap().tick();
+        self.play.lock().unwrap().tick(watched.keymouse);
     }
 }

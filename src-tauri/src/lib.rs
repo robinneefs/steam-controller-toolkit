@@ -513,7 +513,7 @@ fn forward_events(app: AppHandle, rx: mpsc::Receiver<HubEvent>, hub: Hub, tape: 
         let status = (visible && now >= next_emit).then(|| deck.status());
         drop(deck);
         // Outside the tape lock: reconnecting to a port can take a moment.
-        outputs.tick();
+        outputs.tick(watched);
         // The mode switch click and the game's rumble go to the live controller, not during a replay.
         let (haptics, rumble) = {
             let mut play = outputs.play.lock().unwrap();

@@ -725,8 +725,9 @@ impl PlayOut {
     }
 
     /// Called often from the event loop: picks up the pad that finished plugging in, driver checks
-    /// and installs, rumble, and polls the foreground window for auto switch.
-    pub fn tick(&mut self) {
+    /// and installs, rumble, and polls the foreground window for auto switch. `keymouse_watched`:
+    /// the Keyboard & mouse tab is in view.
+    pub fn tick(&mut self, keymouse_watched: bool) {
         if let Some(rx) = &self.support_check {
             match rx.try_recv() {
                 Ok(support) => {
@@ -794,7 +795,8 @@ impl PlayOut {
             self.run_error = result.err();
         }
         // Also while the Keyboard & mouse tab is in view, for the programs it offers.
-        let watching = matches!(self.preview_slot, Some(Slot::Desktop | Slot::Game | Slot::App(_)));
+        let watching = keymouse_watched
+            && matches!(self.preview_slot, Some(Slot::Desktop | Slot::Game | Slot::App(_)));
         if self.config.keymouse.enabled || watching {
             if self.foreground_checked.is_none_or(|t| t.elapsed() >= FOREGROUND_POLL) {
                 self.foreground_checked = Some(Instant::now());
